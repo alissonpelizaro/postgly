@@ -1,7 +1,10 @@
 //! Tauri command handlers — the IPC surface exposed to the frontend.
 //!
-//! Phase 0 ships only `app_info`. Connection and database commands land
-//! in Phases 1–3, each delegating to a `dyn DatabaseDriver`.
+//! `app_info` is the Phase 0 sanity command; `connections` holds the
+//! Phase 1 connection-management commands. Database explorer commands
+//! land in Phases 2–3.
+
+pub mod connections;
 
 use serde::Serialize;
 

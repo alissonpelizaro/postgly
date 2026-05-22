@@ -1,11 +1,14 @@
 //! Postgres implementation of [`DatabaseDriver`].
 //!
-//! Phase 0 ships the skeleton: the type, the trait wiring and method
-//! stubs. Phase 1 fills these in with a real `sqlx` Postgres pool —
-//! every `todo!` below becomes a query against `information_schema` /
-//! `pg_catalog`.
+//! Phase 1 wires up a real `sqlx` connection pool — enough for opening
+//! and testing a connection. The schema/table/query methods stay stubbed
+//! until Phases 2–3, where each becomes a query against
+//! `information_schema` / `pg_catalog`.
+
+use std::time::Duration;
 
 use async_trait::async_trait;
+use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions};
 
 use super::driver::{
     ConnectionConfig, DatabaseDriver, DatabaseKind, QueryResult, SchemaInfo, TableDetails,
@@ -13,11 +16,10 @@ use super::driver::{
 };
 use crate::error::{AppError, AppResult};
 
-/// Driver for PostgreSQL. Holds the connection pool once connected.
+/// Driver for PostgreSQL. Owns the connection pool once connected.
 #[derive(Default)]
 pub struct PostgresDriver {
-    // Phase 1: replace with `Option<sqlx::PgPool>`.
-    connected: bool,
+    pool: Option<PgPool>,
 }
 
 impl PostgresDriver {
@@ -25,13 +27,11 @@ impl PostgresDriver {
         Self::default()
     }
 
-    /// Guard used by every operation that needs an open connection.
-    fn require_connection(&self) -> AppResult<()> {
-        if self.connected {
-            Ok(())
-        } else {
-            Err(AppError::Connection("not connected".into()))
-        }
+    /// Borrow the pool, failing cleanly if the driver isn't connected.
+    fn pool(&self) -> AppResult<&PgPool> {
+        self.pool
+            .as_ref()
+            .ok_or_else(|| AppError::Connection("not connected".into()))
     }
 }
 
@@ -41,31 +41,48 @@ impl DatabaseDriver for PostgresDriver {
         DatabaseKind::Postgres
     }
 
-    async fn connect(&mut self, _config: &ConnectionConfig) -> AppResult<()> {
-        // Phase 1: build a `PgPool` from `_config` and store it.
-        self.connected = true;
+    async fn connect(&mut self, config: &ConnectionConfig) -> AppResult<()> {
+        let options = PgConnectOptions::new()
+            .host(&config.host)
+            .port(config.port)
+            .username(&config.user)
+            .password(&config.password)
+            .database(&config.database);
+
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .acquire_timeout(Duration::from_secs(10))
+            .connect_with(options)
+            .await
+            .map_err(|e| AppError::Connection(e.to_string()))?;
+
+        self.pool = Some(pool);
         Ok(())
     }
 
     async fn ping(&self) -> AppResult<()> {
-        self.require_connection()
+        sqlx::query("SELECT 1")
+            .execute(self.pool()?)
+            .await
+            .map_err(|e| AppError::Connection(e.to_string()))?;
+        Ok(())
     }
 
     async fn list_schemas(&self) -> AppResult<Vec<SchemaInfo>> {
-        self.require_connection()?;
-        // Phase 1: SELECT schema_name FROM information_schema.schemata
+        let _ = self.pool()?;
+        // Phase 2: SELECT schema_name FROM information_schema.schemata
         Ok(Vec::new())
     }
 
     async fn list_tables(&self, _schema: &str) -> AppResult<Vec<TableInfo>> {
-        self.require_connection()?;
-        // Phase 1: query information_schema.tables
+        let _ = self.pool()?;
+        // Phase 2: query information_schema.tables
         Ok(Vec::new())
     }
 
     async fn describe_table(&self, _schema: &str, _table: &str) -> AppResult<TableDetails> {
-        self.require_connection()?;
-        // Phase 1: query information_schema.columns + pg_indexes
+        let _ = self.pool()?;
+        // Phase 2: query information_schema.columns + pg_indexes
         Ok(TableDetails {
             columns: Vec::new(),
             indexes: Vec::new(),
@@ -73,7 +90,7 @@ impl DatabaseDriver for PostgresDriver {
     }
 
     async fn execute(&self, _sql: &str) -> AppResult<QueryResult> {
-        self.require_connection()?;
+        let _ = self.pool()?;
         // Phase 3: run `_sql` through the pool and map the rows.
         Err(AppError::Query(
             "query execution not implemented yet".into(),
@@ -81,7 +98,9 @@ impl DatabaseDriver for PostgresDriver {
     }
 
     async fn disconnect(&mut self) -> AppResult<()> {
-        self.connected = false;
+        if let Some(pool) = self.pool.take() {
+            pool.close().await;
+        }
         Ok(())
     }
 }

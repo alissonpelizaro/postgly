@@ -3,9 +3,9 @@
 A modern, cross-platform desktop app for managing multiple PostgreSQL
 databases — built with **Tauri 2** (Rust) and **React + TypeScript**.
 
-> **Status: Phase 0 — Foundation.** Scaffold, theming, CI and the
-> engine-agnostic database layer are in place. The connection manager
-> (Phase 1) is next.
+> **Status: Phase 1 — Connection manager.** Saved connections can be
+> created, edited, tested and deleted; passwords live in the OS keyring.
+> The database explorer (Phase 2) is next.
 
 ## Tech stack
 
@@ -41,19 +41,22 @@ npm run tauri build  # produce an installable bundle for the host OS
 ```
 src/                      Frontend (React)
   components/
-    ui/                   shadcn/ui primitives
+    ui/                   shadcn/ui primitives (button, input, dialog, ...)
     theme-provider.tsx    light / dark / system theme state
     theme-toggle.tsx
+  features/
+    connections/          connection manager (list, form, IPC wrappers)
   lib/                    shared helpers (cn, ...)
-  features/               feature modules — added per phase
   App.tsx
 
 src-tauri/                Backend (Rust / Tauri)
   src/
     commands/             Tauri command handlers (IPC surface)
+      connections.rs      connection CRUD + test
+    connections/          metadata store (JSON) + keyring helpers
     db/
       driver.rs           DatabaseDriver trait + DTOs
-      postgres.rs         Postgres implementation
+      postgres.rs         Postgres implementation (sqlx)
     error.rs              AppError — the error type crossing IPC
     lib.rs                Tauri builder / entry point
 ```
@@ -68,13 +71,16 @@ src-tauri/                Backend (Rust / Tauri)
 - **Theming** uses CSS custom properties (`src/index.css`) with a `.dark`
   class on `<html>`. The choice (light / dark / system) is persisted to
   `localStorage`.
+- **Secrets never touch the metadata store.** Connection metadata is a
+  plain JSON file under the app config dir; the password is stored apart
+  in the OS keyring, keyed by the connection id.
 
 ## Roadmap
 
 | Phase | Scope                                                |
 | ----- | ---------------------------------------------------- |
-| 0     | Foundation: scaffold, theming, CI, driver trait      |
-| 1     | Connection manager (CRUD, OS keyring for passwords)  |
+| 0     | Foundation: scaffold, theming, CI, driver trait   ✅ |
+| 1     | Connection manager (CRUD, OS keyring)             ✅ |
 | 2     | Database explorer: schemas, tables, structure tab    |
 | 3     | Data grid, quick filter, SQL editor                  |
 | 4     | Global tabs — work across multiple databases at once |
