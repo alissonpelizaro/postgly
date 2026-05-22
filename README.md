@@ -3,9 +3,9 @@
 A modern, cross-platform desktop app for managing multiple PostgreSQL
 databases — built with **Tauri 2** (Rust) and **React + TypeScript**.
 
-> **Status: Phase 2 — Database explorer.** Connecting opens a workspace
-> with a resizable schema tree and a structure tab (columns, indexes).
-> The data grid and SQL editor (Phase 3) are next.
+> **Status: Phase 3 — Data & queries.** The records tab browses table
+> rows with a quick-filter and pagination, and runs free-form SQL through
+> a syntax-highlighted editor. Global tabs (Phase 4) are next.
 
 ## Tech stack
 
@@ -46,7 +46,8 @@ src/                      Frontend (React)
     theme-toggle.tsx
   features/
     connections/          connection manager (list, form, IPC wrappers)
-    explorer/             connected workspace (schema tree, structure)
+    explorer/             connected workspace (schema tree, structure,
+                          records grid, quick-filter, SQL editor)
   lib/                    shared helpers (cn, ...)
   App.tsx
 
@@ -85,7 +86,7 @@ src-tauri/                Backend (Rust / Tauri)
 | 0     | Foundation: scaffold, theming, CI, driver trait   ✅ |
 | 1     | Connection manager (CRUD, OS keyring)             ✅ |
 | 2     | Database explorer: schemas, tables, structure tab ✅ |
-| 3     | Data grid, quick filter, SQL editor                  |
+| 3     | Data grid, quick filter, SQL editor               ✅ |
 | 4     | Global tabs — work across multiple databases at once |
 | 5     | Polish, installers, auto-update                      |
 

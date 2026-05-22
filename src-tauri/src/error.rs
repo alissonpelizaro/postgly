@@ -17,7 +17,9 @@ pub enum AppError {
     #[error("query failed: {0}")]
     Query(String),
 
-    /// The requested engine has no registered driver yet.
+    /// The requested engine has no registered driver yet. Reserved for
+    /// when a second engine is introduced post-v1.
+    #[allow(dead_code)]
     #[error("unsupported database engine: {0}")]
     UnsupportedEngine(String),
 

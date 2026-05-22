@@ -1,10 +1,5 @@
 //! Postgly — Tauri application entry point.
 
-// The driver trait carries a `QueryResult` DTO and an `execute` method
-// that the SQL-runner commands only start calling in Phase 3. Suppress
-// dead-code noise for that scaffolding until those call sites land.
-#![allow(dead_code)]
-
 mod commands;
 mod connections;
 mod db;
@@ -27,6 +22,8 @@ pub fn run() {
             commands::explorer::list_schemas,
             commands::explorer::list_tables,
             commands::explorer::describe_table,
+            commands::explorer::run_query,
+            commands::explorer::browse_table,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

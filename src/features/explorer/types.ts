@@ -38,3 +38,29 @@ export interface TableRef {
   schema: string;
   name: string;
 }
+
+/** The result of running a query: column names plus stringified rows. */
+export interface QueryResult {
+  columns: string[];
+  rows: (string | null)[][];
+  /** Rows returned (SELECT) or affected (INSERT/UPDATE/DELETE). */
+  rows_affected: number;
+}
+
+/** Comparison operator for the records quick-filter. */
+export type FilterOp =
+  | "eq"
+  | "neq"
+  | "lt"
+  | "gt"
+  | "lte"
+  | "gte"
+  | "like"
+  | "ilike";
+
+/** A single quick-filter clause: `column <op> value`. */
+export interface RowFilter {
+  column: string;
+  operator: FilterOp;
+  value: string;
+}

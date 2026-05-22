@@ -13,6 +13,7 @@ import type { ConnectionMeta } from "@/features/connections/types";
 
 import { explorerApi } from "./api";
 import { SchemaTree } from "./SchemaTree";
+import { TableRecords } from "./TableRecords";
 import { TableStructure } from "./TableStructure";
 import type { TableRef } from "./types";
 
@@ -150,18 +151,16 @@ function DetailPanel({ sessionId, table, tab, onTabChange }: DetailPanelProps) {
       <div className="min-h-0 flex-1">
         {tab === "structure" ? (
           <TableStructure
-            key={`${table.schema}.${table.name}`}
+            key={`structure:${table.schema}.${table.name}`}
             sessionId={sessionId}
             table={table}
           />
         ) : (
-          <CenteredState>
-            <p className="text-sm font-medium">Registros</p>
-            <p className="max-w-sm text-center text-sm text-muted-foreground">
-              A visualização de registros, filtros e o editor SQL chegam na
-              próxima fase.
-            </p>
-          </CenteredState>
+          <TableRecords
+            key={`records:${table.schema}.${table.name}`}
+            sessionId={sessionId}
+            table={table}
+          />
         )}
       </div>
     </div>

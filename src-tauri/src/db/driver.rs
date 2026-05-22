@@ -87,6 +87,29 @@ pub struct QueryResult {
     pub rows_affected: u64,
 }
 
+/// Comparison operator for the records quick-filter.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FilterOp {
+    Eq,
+    Neq,
+    Lt,
+    Gt,
+    Lte,
+    Gte,
+    Like,
+    ILike,
+}
+
+/// A single quick-filter clause: `column <op> value`. The column value is
+/// always compared as text, so `value` is engine-independent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RowFilter {
+    pub column: String,
+    pub operator: FilterOp,
+    pub value: String,
+}
+
 /// The contract every database engine must fulfil.
 ///
 /// Implementations own their own connection/pool. Methods are async and
@@ -94,7 +117,9 @@ pub struct QueryResult {
 /// state and be shared across command invocations.
 #[async_trait]
 pub trait DatabaseDriver: Send + Sync {
-    /// Which engine this driver speaks.
+    /// Which engine this driver speaks. Used once the UI surfaces the
+    /// engine of a connection (more engines land post-v1).
+    #[allow(dead_code)]
     fn kind(&self) -> DatabaseKind;
 
     /// Open a connection / pool. Called once when a connection tab opens.
@@ -114,6 +139,16 @@ pub trait DatabaseDriver: Send + Sync {
 
     /// Run an arbitrary SQL statement.
     async fn execute(&self, sql: &str) -> AppResult<QueryResult>;
+
+    /// Browse a table's rows with an optional quick-filter and pagination.
+    async fn browse_table(
+        &self,
+        schema: &str,
+        table: &str,
+        filter: Option<&RowFilter>,
+        limit: i64,
+        offset: i64,
+    ) -> AppResult<QueryResult>;
 
     /// Close the connection / pool.
     async fn disconnect(&mut self) -> AppResult<()>;

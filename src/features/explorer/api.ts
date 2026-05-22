@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { SchemaInfo, TableDetails, TableInfo } from "./types";
+import type {
+  QueryResult,
+  RowFilter,
+  SchemaInfo,
+  TableDetails,
+  TableInfo,
+} from "./types";
 
 /** Typed wrappers around the Rust database-explorer commands. */
 export const explorerApi = {
@@ -23,4 +29,26 @@ export const explorerApi = {
   /** Describe a table's columns and indexes. */
   describeTable: (sessionId: string, schema: string, table: string) =>
     invoke<TableDetails>("describe_table", { sessionId, schema, table }),
+
+  /** Run an arbitrary SQL statement from the editor. */
+  runQuery: (sessionId: string, sql: string) =>
+    invoke<QueryResult>("run_query", { sessionId, sql }),
+
+  /** Browse a table's rows with an optional quick-filter and pagination. */
+  browseTable: (
+    sessionId: string,
+    schema: string,
+    table: string,
+    filter: RowFilter | null,
+    limit: number,
+    offset: number,
+  ) =>
+    invoke<QueryResult>("browse_table", {
+      sessionId,
+      schema,
+      table,
+      filter,
+      limit,
+      offset,
+    }),
 };
