@@ -2,7 +2,6 @@ import { useState } from "react";
 import { AlertCircle, Database, Loader2, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 import { connectionsApi } from "./api";
 import { ConnectionForm } from "./ConnectionForm";
@@ -11,7 +10,7 @@ import { useConnections } from "./use-connections";
 import type { ConnectionMeta } from "./types";
 
 interface ConnectionsScreenProps {
-  /** Invoked when the user connects to a database (handled in Phase 2). */
+  /** Invoked when the user connects — opens the connection in a new tab. */
   onConnect: (connection: ConnectionMeta) => void;
 }
 
@@ -53,13 +52,10 @@ export function ConnectionsScreen({ onConnect }: ConnectionsScreenProps) {
                 : `${connections.length} conexão(ões) salva(s)`}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button size="sm" onClick={openCreate}>
-              <Plus />
-              Nova conexão
-            </Button>
-          </div>
+          <Button size="sm" onClick={openCreate}>
+            <Plus />
+            Nova conexão
+          </Button>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
