@@ -1,10 +1,11 @@
 //! Tauri command handlers — the IPC surface exposed to the frontend.
 //!
-//! `app_info` is the Phase 0 sanity command; `connections` holds the
-//! Phase 1 connection-management commands. Database explorer commands
-//! land in Phases 2–3.
+//! - `app_info` — basic identity / IPC sanity check.
+//! - `connections` — saved-connection management (CRUD, test).
+//! - `explorer` — opening a connection and browsing its structure.
 
 pub mod connections;
+pub mod explorer;
 
 use serde::Serialize;
 
