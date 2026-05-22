@@ -3,9 +3,9 @@
 A modern, cross-platform desktop app for managing multiple PostgreSQL
 databases — built with **Tauri 2** (Rust) and **React + TypeScript**.
 
-> **Status: Phase 4 — Global tabs.** Multiple connections stay open side
-> by side as tabs, each keeping its own session and state. Polish and
-> installers (Phase 5) are next.
+> **Status: Phase 5 — Polish & distribution.** Brand logo and app icons,
+> keyboard shortcuts, and a tagged-release workflow that builds installers
+> for every OS. Auto-update and code signing are still pending.
 
 ## Tech stack
 
@@ -36,10 +36,24 @@ npm run typecheck    # type-check the frontend
 npm run tauri build  # produce an installable bundle for the host OS
 ```
 
+## Releases
+
+Pushing a version tag builds and publishes installers for macOS, Windows
+and Linux to a draft GitHub Release:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+**Keyboard shortcuts:** `Cmd/Ctrl+1`–`9` jump to the Nth connection tab,
+`Cmd/Ctrl+0` returns to the connection manager, `Cmd/Ctrl+Enter` runs the
+SQL editor.
+
 ## Project structure
 
 ```
 src/                      Frontend (React)
+  assets/                 brand logo
   components/
     ui/                   shadcn/ui primitives (button, input, dialog, ...)
     theme-provider.tsx    light / dark / system theme state
@@ -89,7 +103,7 @@ src-tauri/                Backend (Rust / Tauri)
 | 2     | Database explorer: schemas, tables, structure tab ✅ |
 | 3     | Data grid, quick filter, SQL editor               ✅ |
 | 4     | Global tabs — work across multiple databases at once ✅ |
-| 5     | Polish, installers, auto-update                      |
+| 5     | Polish, installers ✅ · auto-update + signing pending |
 
 ## License
 

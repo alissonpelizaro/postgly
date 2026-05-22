@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertCircle, Database, Loader2, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import logoUrl from "@/assets/postgly-logo.png";
 
 import { connectionsApi } from "./api";
 import { ConnectionForm } from "./ConnectionForm";
@@ -96,26 +97,27 @@ export function ConnectionsScreen({ onConnect }: ConnectionsScreenProps) {
   );
 }
 
-/** Left-hand branding panel — pure decoration. */
+/**
+ * Left-hand branding panel — an always-dark hero slab so the neon logo
+ * reads consistently in both themes.
+ */
 function BrandPanel() {
   return (
-    <aside className="relative hidden w-[42%] shrink-0 overflow-hidden bg-sidebar sm:flex">
-      {/* Soft gradient wash. */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/15 via-transparent to-primary/5" />
-      <div className="absolute -left-16 -top-16 size-72 rounded-full bg-primary/10 blur-3xl" />
-      <div className="absolute -bottom-20 -right-10 size-72 rounded-full bg-primary/10 blur-3xl" />
+    <aside className="relative hidden w-[42%] shrink-0 overflow-hidden bg-neutral-950 sm:flex">
+      {/* Green glow accents. */}
+      <div className="absolute -left-16 -top-16 size-72 rounded-full bg-primary/20 blur-3xl" />
+      <div className="absolute -bottom-20 -right-10 size-80 rounded-full bg-primary/15 blur-3xl" />
 
-      <div className="relative z-10 flex flex-col items-center justify-center gap-5 px-10 text-center">
-        <div className="flex size-20 items-center justify-center rounded-3xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
-          <Database className="size-10" />
-        </div>
-        <div className="space-y-1.5">
-          <h2 className="text-3xl font-semibold tracking-tight">Postgly</h2>
-          <p className="max-w-xs text-sm text-muted-foreground">
-            Gerencie seus bancos PostgreSQL em um só lugar — rápido, local e
-            multiplataforma.
-          </p>
-        </div>
+      <div className="relative z-10 flex flex-col items-center justify-center gap-6 px-10 text-center">
+        <img
+          src={logoUrl}
+          alt="Postgly"
+          className="w-48 drop-shadow-[0_0_30px_rgba(150,230,60,0.25)]"
+        />
+        <p className="max-w-xs text-sm text-neutral-400">
+          Gerencie seus bancos PostgreSQL em um só lugar — rápido, local e
+          multiplataforma.
+        </p>
       </div>
     </aside>
   );

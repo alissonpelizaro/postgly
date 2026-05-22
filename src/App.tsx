@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ConnectionsScreen } from "@/features/connections/ConnectionsScreen";
 import type { ConnectionMeta } from "@/features/connections/types";
@@ -33,6 +33,25 @@ function App() {
       setActiveId(next.length === 0 ? null : next[Math.max(0, index - 1)].id);
     }
   };
+
+  // Cmd/Ctrl+0 jumps home; Cmd/Ctrl+1–9 jump to the Nth tab.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === "0") {
+        e.preventDefault();
+        setActiveId(null);
+      } else if (e.key >= "1" && e.key <= "9") {
+        const index = Number(e.key) - 1;
+        if (index < tabs.length) {
+          e.preventDefault();
+          setActiveId(tabs[index].id);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tabs]);
 
   return (
     <div className="flex h-full flex-col">
