@@ -6,7 +6,10 @@ use uuid::Uuid;
 use crate::connections;
 use crate::db::{
     self,
-    driver::{ConnectionConfig, QueryResult, RowFilter, SchemaInfo, TableDetails, TableInfo},
+    driver::{
+        CellValue, ConnectionConfig, OrderBy, QueryResult, RowFilter, SchemaInfo, TableDetails,
+        TableInfo,
+    },
 };
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, Session};
@@ -115,7 +118,59 @@ pub async fn run_query(
     session(&state, &session_id)?.execute(&sql).await
 }
 
-/// Browse a table's rows with an optional quick-filter and pagination.
+/// Update a single table row, addressed by its primary key.
+#[tauri::command]
+pub async fn update_row(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    schema: String,
+    table: String,
+    primary_key: Vec<CellValue>,
+    changes: Vec<CellValue>,
+) -> AppResult<QueryResult> {
+    session(&state, &session_id)?
+        .update_row(&schema, &table, &primary_key, &changes)
+        .await
+}
+
+/// Insert a single row from the given column values.
+#[tauri::command]
+pub async fn insert_row(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    schema: String,
+    table: String,
+    values: Vec<CellValue>,
+) -> AppResult<QueryResult> {
+    session(&state, &session_id)?
+        .insert_row(&schema, &table, &values)
+        .await
+}
+
+/// Delete a single table row, addressed by its primary key.
+#[tauri::command]
+pub async fn delete_row(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    schema: String,
+    table: String,
+    primary_key: Vec<CellValue>,
+) -> AppResult<QueryResult> {
+    session(&state, &session_id)?
+        .delete_row(&schema, &table, &primary_key)
+        .await
+}
+
+/// Return the statements run this session, oldest first.
+#[tauri::command]
+pub fn query_history(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> AppResult<Vec<String>> {
+    Ok(session(&state, &session_id)?.query_history())
+}
+
+/// Browse a table's rows with an optional quick-filter, sort and pagination.
 #[tauri::command]
 pub async fn browse_table(
     state: tauri::State<'_, AppState>,
@@ -123,10 +178,11 @@ pub async fn browse_table(
     schema: String,
     table: String,
     filter: Option<RowFilter>,
+    order_by: Option<OrderBy>,
     limit: i64,
     offset: i64,
 ) -> AppResult<QueryResult> {
     session(&state, &session_id)?
-        .browse_table(&schema, &table, filter.as_ref(), limit, offset)
+        .browse_table(&schema, &table, filter.as_ref(), order_by.as_ref(), limit, offset)
         .await
 }

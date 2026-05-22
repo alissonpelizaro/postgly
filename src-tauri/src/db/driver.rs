@@ -110,6 +110,21 @@ pub struct RowFilter {
     pub value: String,
 }
 
+/// A sort clause for table browsing: `ORDER BY column [ASC|DESC]`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderBy {
+    pub column: String,
+    pub descending: bool,
+}
+
+/// A single column value, used both to address a row (primary key) and to
+/// carry an edited value. `value` is `None` for SQL `NULL`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CellValue {
+    pub column: String,
+    pub value: Option<String>,
+}
+
 /// The contract every database engine must fulfil.
 ///
 /// Implementations own their own connection/pool. Methods are async and
@@ -140,15 +155,45 @@ pub trait DatabaseDriver: Send + Sync {
     /// Run an arbitrary SQL statement.
     async fn execute(&self, sql: &str) -> AppResult<QueryResult>;
 
-    /// Browse a table's rows with an optional quick-filter and pagination.
+    /// Browse a table's rows with an optional quick-filter, sort and
+    /// pagination.
     async fn browse_table(
         &self,
         schema: &str,
         table: &str,
         filter: Option<&RowFilter>,
+        order_by: Option<&OrderBy>,
         limit: i64,
         offset: i64,
     ) -> AppResult<QueryResult>;
+
+    /// Update a single table row, addressed by its primary key.
+    async fn update_row(
+        &self,
+        schema: &str,
+        table: &str,
+        primary_key: &[CellValue],
+        changes: &[CellValue],
+    ) -> AppResult<QueryResult>;
+
+    /// Insert a single row from the given column values.
+    async fn insert_row(
+        &self,
+        schema: &str,
+        table: &str,
+        values: &[CellValue],
+    ) -> AppResult<QueryResult>;
+
+    /// Delete a single table row, addressed by its primary key.
+    async fn delete_row(
+        &self,
+        schema: &str,
+        table: &str,
+        primary_key: &[CellValue],
+    ) -> AppResult<QueryResult>;
+
+    /// The statements run this session, oldest first.
+    fn query_history(&self) -> Vec<String>;
 
     /// Close the connection / pool.
     async fn disconnect(&mut self) -> AppResult<()>;

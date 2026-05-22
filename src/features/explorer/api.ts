@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type {
+  CellValue,
+  OrderBy,
   QueryResult,
   RowFilter,
   SchemaInfo,
@@ -34,12 +36,56 @@ export const explorerApi = {
   runQuery: (sessionId: string, sql: string) =>
     invoke<QueryResult>("run_query", { sessionId, sql }),
 
-  /** Browse a table's rows with an optional quick-filter and pagination. */
+  /** Update a single table row, addressed by its primary key. */
+  updateRow: (
+    sessionId: string,
+    schema: string,
+    table: string,
+    primaryKey: CellValue[],
+    changes: CellValue[],
+  ) =>
+    invoke<QueryResult>("update_row", {
+      sessionId,
+      schema,
+      table,
+      primaryKey,
+      changes,
+    }),
+
+  /** Insert a single row from the given column values. */
+  insertRow: (
+    sessionId: string,
+    schema: string,
+    table: string,
+    values: CellValue[],
+  ) =>
+    invoke<QueryResult>("insert_row", { sessionId, schema, table, values }),
+
+  /** Delete a single table row, addressed by its primary key. */
+  deleteRow: (
+    sessionId: string,
+    schema: string,
+    table: string,
+    primaryKey: CellValue[],
+  ) =>
+    invoke<QueryResult>("delete_row", {
+      sessionId,
+      schema,
+      table,
+      primaryKey,
+    }),
+
+  /** The statements run this session, oldest first. */
+  queryHistory: (sessionId: string) =>
+    invoke<string[]>("query_history", { sessionId }),
+
+  /** Browse a table's rows with an optional quick-filter, sort and pagination. */
   browseTable: (
     sessionId: string,
     schema: string,
     table: string,
     filter: RowFilter | null,
+    orderBy: OrderBy | null,
     limit: number,
     offset: number,
   ) =>
@@ -48,6 +94,7 @@ export const explorerApi = {
       schema,
       table,
       filter,
+      orderBy,
       limit,
       offset,
     }),

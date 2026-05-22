@@ -8,6 +8,7 @@
 //! `yes_or_no`, ...) that sqlx can't decode directly, so every selected
 //! column is cast to `text` / `bool`.
 
+use std::sync::Mutex;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -15,8 +16,8 @@ use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions};
 use sqlx::{Column, Executor, Row};
 
 use super::driver::{
-    ColumnInfo, ConnectionConfig, DatabaseDriver, DatabaseKind, FilterOp, IndexInfo, QueryResult,
-    RowFilter, SchemaInfo, TableDetails, TableInfo,
+    CellValue, ColumnInfo, ConnectionConfig, DatabaseDriver, DatabaseKind, FilterOp, IndexInfo,
+    OrderBy, QueryResult, RowFilter, SchemaInfo, TableDetails, TableInfo,
 };
 use crate::error::{AppError, AppResult};
 
@@ -49,10 +50,15 @@ impl FilterOp {
     }
 }
 
+/// Most recent statements kept per session for the command history.
+const HISTORY_CAP: usize = 200;
+
 /// Driver for PostgreSQL. Owns the connection pool once connected.
 #[derive(Default)]
 pub struct PostgresDriver {
     pool: Option<PgPool>,
+    /// Statements run through [`execute`], newest last (in-memory only).
+    history: Mutex<Vec<String>>,
 }
 
 impl PostgresDriver {
@@ -227,6 +233,16 @@ impl DatabaseDriver for PostgresDriver {
             return Err(AppError::Query("empty statement".into()));
         }
 
+        // Record every statement (browse, DML and free-form queries all
+        // funnel through here) for the session command history.
+        if let Ok(mut h) = self.history.lock() {
+            h.push(trimmed.to_string());
+            let len = h.len();
+            if len > HISTORY_CAP {
+                h.drain(0..len - HISTORY_CAP);
+            }
+        }
+
         // The simple-query protocol (`raw_sql`) returns every value in
         // text format, so any column decodes cleanly as `Option<String>`
         // regardless of its Postgres type.
@@ -271,8 +287,12 @@ impl DatabaseDriver for PostgresDriver {
         for row in &rows {
             let mut cells = Vec::with_capacity(columns.len());
             for i in 0..columns.len() {
+                // `try_get_unchecked` skips sqlx's type-compatibility
+                // check: the simple-query protocol already delivers every
+                // value as text, so types like JSONB (which `String`'s
+                // `Type::compatible` rejects) still decode fine.
                 cells.push(
-                    row.try_get::<Option<String>, _>(i)
+                    row.try_get_unchecked::<Option<String>, _>(i)
                         .map_err(|e| AppError::Query(e.to_string()))?,
                 );
             }
@@ -292,6 +312,7 @@ impl DatabaseDriver for PostgresDriver {
         schema: &str,
         table: &str,
         filter: Option<&RowFilter>,
+        order_by: Option<&OrderBy>,
         limit: i64,
         offset: i64,
     ) -> AppResult<QueryResult> {
@@ -310,11 +331,132 @@ impl DatabaseDriver for PostgresDriver {
                 quote_literal(&f.value),
             ));
         }
+        if let Some(o) = order_by {
+            sql.push_str(&format!(
+                " ORDER BY {} {}",
+                quote_ident(&o.column),
+                if o.descending { "DESC" } else { "ASC" },
+            ));
+        }
         sql.push_str(&format!(
             " LIMIT {} OFFSET {}",
             limit.clamp(0, 10_000),
             offset.max(0),
         ));
+        self.execute(&sql).await
+    }
+
+    async fn insert_row(
+        &self,
+        schema: &str,
+        table: &str,
+        values: &[CellValue],
+    ) -> AppResult<QueryResult> {
+        if values.is_empty() {
+            return Err(AppError::Query("no values to insert".into()));
+        }
+        let render = |c: &CellValue| match &c.value {
+            Some(v) => quote_literal(v),
+            None => "NULL".to_string(),
+        };
+        let columns = values
+            .iter()
+            .map(|c| quote_ident(&c.column))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let literals = values.iter().map(render).collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            "INSERT INTO {}.{} ({}) VALUES ({})",
+            quote_ident(schema),
+            quote_ident(table),
+            columns,
+            literals,
+        );
+        self.execute(&sql).await
+    }
+
+    async fn delete_row(
+        &self,
+        schema: &str,
+        table: &str,
+        primary_key: &[CellValue],
+    ) -> AppResult<QueryResult> {
+        if primary_key.is_empty() {
+            return Err(AppError::Query(
+                "table has no primary key; cannot delete rows".into(),
+            ));
+        }
+        let where_clause = primary_key
+            .iter()
+            .map(|c| match &c.value {
+                Some(v) => format!("{}::text = {}", quote_ident(&c.column), quote_literal(v)),
+                None => format!("{} IS NULL", quote_ident(&c.column)),
+            })
+            .collect::<Vec<_>>()
+            .join(" AND ");
+        let sql = format!(
+            "DELETE FROM {}.{} WHERE {}",
+            quote_ident(schema),
+            quote_ident(table),
+            where_clause,
+        );
+        self.execute(&sql).await
+    }
+
+    fn query_history(&self) -> Vec<String> {
+        self.history
+            .lock()
+            .map(|h| h.clone())
+            .unwrap_or_default()
+    }
+
+    async fn update_row(
+        &self,
+        schema: &str,
+        table: &str,
+        primary_key: &[CellValue],
+        changes: &[CellValue],
+    ) -> AppResult<QueryResult> {
+        if primary_key.is_empty() {
+            return Err(AppError::Query(
+                "table has no primary key; cannot edit rows".into(),
+            ));
+        }
+        if changes.is_empty() {
+            return Err(AppError::Query("no changes to apply".into()));
+        }
+
+        // Text literals coerce to the target column type via Postgres
+        // assignment casts, so any column type can be set from a string.
+        let render = |c: &CellValue| match &c.value {
+            Some(v) => quote_literal(v),
+            None => "NULL".to_string(),
+        };
+
+        let set = changes
+            .iter()
+            .map(|c| format!("{} = {}", quote_ident(&c.column), render(c)))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // Primary-key columns are compared as text so the value carried
+        // back from the (always-text) result grid matches any key type.
+        let where_clause = primary_key
+            .iter()
+            .map(|c| match &c.value {
+                Some(v) => format!("{}::text = {}", quote_ident(&c.column), quote_literal(v)),
+                None => format!("{} IS NULL", quote_ident(&c.column)),
+            })
+            .collect::<Vec<_>>()
+            .join(" AND ");
+
+        let sql = format!(
+            "UPDATE {}.{} SET {} WHERE {}",
+            quote_ident(schema),
+            quote_ident(table),
+            set,
+            where_clause,
+        );
         self.execute(&sql).await
     }
 

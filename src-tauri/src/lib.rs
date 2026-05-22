@@ -24,6 +24,10 @@ pub fn run() {
             commands::explorer::describe_table,
             commands::explorer::run_query,
             commands::explorer::browse_table,
+            commands::explorer::update_row,
+            commands::explorer::insert_row,
+            commands::explorer::delete_row,
+            commands::explorer::query_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
