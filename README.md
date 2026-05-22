@@ -1,13 +1,51 @@
 # Postgly
 
 A modern, cross-platform desktop app for managing multiple PostgreSQL
-databases — built with **Tauri 2** (Rust) and **React + TypeScript**.
+databases — fast, local and open. Built with **Tauri 2** (Rust) and
+**React + TypeScript**.
 
-> **Status: Phase 5 — Polish & distribution.** Brand logo and app icons,
-> keyboard shortcuts, and a tagged-release workflow that builds installers
-> for every OS. Auto-update and code signing are still pending.
+![Postgly](src/assets/postgly-logo.png)
 
-## Tech stack
+## Features
+
+- **Multiple connections** — manage every database from one window, each
+  open in its own tab.
+- **Schema explorer** — browse schemas, tables and views, inspect column
+  and index structure.
+- **Records grid** — browse rows with a quick-filter, sort by any column
+  and paginate through results.
+- **Edit, insert and delete** rows directly; JSON / JSONB columns get a
+  dedicated JSON view.
+- **SQL editor** — syntax-highlighted free-form queries; run only the
+  selected statement, with a per-session command history.
+- **Local & private** — connection passwords live in the OS keyring,
+  never in a plain file.
+- **Light & dark themes**, following the system by default.
+
+## Download
+
+Grab the installer for your operating system from the latest release:
+
+| OS                       | Installer                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| 🍎 macOS (Apple Silicon) | [Download `.dmg`](https://github.com/alissonpelizaro/postgly/releases/latest)               |
+| 🍎 macOS (Intel)         | [Download `.dmg`](https://github.com/alissonpelizaro/postgly/releases/latest)               |
+| 🪟 Windows               | [Download `.exe` / `.msi`](https://github.com/alissonpelizaro/postgly/releases/latest)      |
+| 🐧 Linux                 | [Download `.AppImage` / `.deb`](https://github.com/alissonpelizaro/postgly/releases/latest) |
+
+> Installers are currently **unsigned** — macOS and Windows may warn on
+> first launch. Code signing / notarization is planned.
+>
+> All builds are on the [Releases page](https://github.com/alissonpelizaro/postgly/releases).
+
+---
+
+## Contributing
+
+Postgly is open to contributions. The sections below cover running the
+app locally and how the codebase is organized.
+
+### Tech stack
 
 | Layer    | Choice                                        |
 | -------- | --------------------------------------------- |
@@ -17,12 +55,12 @@ databases — built with **Tauri 2** (Rust) and **React + TypeScript**.
 | Styling  | Tailwind CSS 4 + shadcn/ui design tokens      |
 | Icons    | lucide-react                                  |
 
-## Prerequisites
+### Prerequisites
 
 - Node.js 20+
 - Rust (stable) + the [Tauri 2 system dependencies](https://tauri.app/start/prerequisites/)
 
-## Development
+### Development
 
 ```bash
 npm install        # install frontend dependencies
@@ -36,7 +74,11 @@ npm run typecheck    # type-check the frontend
 npm run tauri build  # produce an installable bundle for the host OS
 ```
 
-## Releases
+**Keyboard shortcuts:** `Cmd/Ctrl+1`–`9` jump to the Nth connection tab,
+`Cmd/Ctrl+0` returns to the connection manager, `Cmd/Ctrl+Enter` runs the
+SQL editor.
+
+### Releases
 
 Pushing a version tag builds and publishes installers for macOS, Windows
 and Linux to a draft GitHub Release:
@@ -45,11 +87,7 @@ and Linux to a draft GitHub Release:
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-**Keyboard shortcuts:** `Cmd/Ctrl+1`–`9` jump to the Nth connection tab,
-`Cmd/Ctrl+0` returns to the connection manager, `Cmd/Ctrl+Enter` runs the
-SQL editor.
-
-## Project structure
+### Project structure
 
 ```
 src/                      Frontend (React)
@@ -80,7 +118,7 @@ src-tauri/                Backend (Rust / Tauri)
     lib.rs                Tauri builder / entry point
 ```
 
-## Architecture notes
+### Architecture notes
 
 - **Engine-agnostic from day one.** Every database backend implements the
   single `DatabaseDriver` trait in `src-tauri/src/db/driver.rs`. Postgres
