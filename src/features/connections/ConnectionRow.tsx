@@ -81,16 +81,18 @@ export function ConnectionRow({
       ) : (
         <div
           className={cn(
-            "flex items-center gap-1",
-            "translate-x-1 opacity-0 transition-all duration-150",
-            "group-hover:translate-x-0 group-hover:opacity-100",
-            "focus-within:translate-x-0 focus-within:opacity-100",
+            // Collapsed to zero width while hidden so the row text keeps
+            // the full width; expands on hover / focus.
+            "flex items-center gap-1 overflow-hidden",
+            "max-w-0 opacity-0 transition-all duration-150",
+            "group-hover:max-w-[220px] group-hover:opacity-100",
+            "focus-within:max-w-[220px] focus-within:opacity-100",
           )}
         >
           <Button
             size="icon"
             variant="ghost"
-            className="size-8"
+            className="size-8 shrink-0"
             title="Editar"
             aria-label="Editar conexão"
             onClick={() => onEdit(connection)}
@@ -100,7 +102,7 @@ export function ConnectionRow({
           <Button
             size="icon"
             variant="ghost"
-            className="size-8 text-destructive hover:text-destructive"
+            className="size-8 shrink-0 text-destructive hover:text-destructive"
             title="Excluir"
             aria-label="Excluir conexão"
             onClick={() => setConfirmingDelete(true)}
@@ -109,7 +111,7 @@ export function ConnectionRow({
           </Button>
           <Button
             size="sm"
-            className="h-8"
+            className="h-8 shrink-0"
             title="Conectar"
             onClick={() => onConnect(connection)}
           >

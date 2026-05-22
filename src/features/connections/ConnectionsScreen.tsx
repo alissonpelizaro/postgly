@@ -111,12 +111,11 @@ export function ConnectionsScreen({ onConnect }: ConnectionsScreenProps) {
 }
 
 /**
- * Left-hand branding panel — an always-dark hero slab so the neon logo
- * reads consistently in both themes.
+ * Left-hand branding panel — a hero slab that follows the active theme.
  */
 function BrandPanel() {
   return (
-    <aside className="relative flex h-full w-full items-center justify-center overflow-hidden bg-neutral-950">
+    <aside className="relative flex h-full w-full items-center justify-center overflow-hidden bg-muted">
       {/* Green glow accents. */}
       <div className="absolute -left-16 -top-16 size-72 rounded-full bg-primary/20 blur-3xl" />
       <div className="absolute -bottom-20 -right-10 size-80 rounded-full bg-primary/15 blur-3xl" />
@@ -127,7 +126,7 @@ function BrandPanel() {
           alt="Postgly"
           className="w-48 drop-shadow-[0_0_30px_rgba(150,230,60,0.25)]"
         />
-        <p className="max-w-xs text-sm text-neutral-400">
+        <p className="max-w-xs text-sm text-muted-foreground">
           Gerencie seus bancos PostgreSQL em um só lugar — rápido, local e
           multiplataforma.
         </p>
