@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, ArrowLeft, Loader2, Table2 } from "lucide-react";
+import { AlertCircle, Database, Loader2, Table2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -7,7 +7,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import type { ConnectionMeta } from "@/features/connections/types";
 
@@ -19,7 +18,7 @@ import type { TableRef } from "./types";
 
 interface ExplorerScreenProps {
   connection: ConnectionMeta;
-  /** Return to the connection manager. */
+  /** Close this connection's tab. */
   onClose: () => void;
 }
 
@@ -64,20 +63,13 @@ export function ExplorerScreen({ connection, onClose }: ExplorerScreenProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-border px-3 py-2">
-        <div className="flex items-center gap-3">
-          <Button size="sm" variant="ghost" onClick={onClose}>
-            <ArrowLeft />
-            Conexões
-          </Button>
-          <div className="leading-tight">
-            <p className="text-sm font-medium">{connection.name}</p>
-            <p className="text-xs text-muted-foreground">
-              {connection.host}:{connection.port}/{connection.database}
-            </p>
-          </div>
-        </div>
-        <ThemeToggle />
+      <header className="flex items-center gap-2 border-b border-border px-3 py-1.5">
+        <Database className="size-4 shrink-0 text-muted-foreground" />
+        <span className="text-sm font-medium">{connection.name}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {connection.user}@{connection.host}:{connection.port}/
+          {connection.database}
+        </span>
       </header>
 
       {opening ? (
@@ -90,7 +82,7 @@ export function ExplorerScreen({ connection, onClose }: ExplorerScreenProps) {
           <AlertCircle className="size-6 text-destructive" />
           <p className="max-w-md text-sm text-destructive">{openError}</p>
           <Button size="sm" variant="outline" onClick={onClose}>
-            Voltar
+            Fechar aba
           </Button>
         </CenteredState>
       ) : session ? (
