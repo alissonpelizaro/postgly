@@ -3,9 +3,9 @@
 A modern, cross-platform desktop app for managing multiple PostgreSQL
 databases — built with **Tauri 2** (Rust) and **React + TypeScript**.
 
-> **Status: Phase 1 — Connection manager.** Saved connections can be
-> created, edited, tested and deleted; passwords live in the OS keyring.
-> The database explorer (Phase 2) is next.
+> **Status: Phase 2 — Database explorer.** Connecting opens a workspace
+> with a resizable schema tree and a structure tab (columns, indexes).
+> The data grid and SQL editor (Phase 3) are next.
 
 ## Tech stack
 
@@ -46,6 +46,7 @@ src/                      Frontend (React)
     theme-toggle.tsx
   features/
     connections/          connection manager (list, form, IPC wrappers)
+    explorer/             connected workspace (schema tree, structure)
   lib/                    shared helpers (cn, ...)
   App.tsx
 
@@ -53,11 +54,13 @@ src-tauri/                Backend (Rust / Tauri)
   src/
     commands/             Tauri command handlers (IPC surface)
       connections.rs      connection CRUD + test
+      explorer.rs         open/close session, schema/table introspection
     connections/          metadata store (JSON) + keyring helpers
     db/
       driver.rs           DatabaseDriver trait + DTOs
       postgres.rs         Postgres implementation (sqlx)
     error.rs              AppError — the error type crossing IPC
+    state.rs              open-connection session registry
     lib.rs                Tauri builder / entry point
 ```
 
@@ -81,7 +84,7 @@ src-tauri/                Backend (Rust / Tauri)
 | ----- | ---------------------------------------------------- |
 | 0     | Foundation: scaffold, theming, CI, driver trait   ✅ |
 | 1     | Connection manager (CRUD, OS keyring)             ✅ |
-| 2     | Database explorer: schemas, tables, structure tab    |
+| 2     | Database explorer: schemas, tables, structure tab ✅ |
 | 3     | Data grid, quick filter, SQL editor                  |
 | 4     | Global tabs — work across multiple databases at once |
 | 5     | Polish, installers, auto-update                      |
