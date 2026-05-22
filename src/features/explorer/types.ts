@@ -47,6 +47,13 @@ export interface QueryResult {
   rows_affected: number;
 }
 
+/** A single column value: used to address a row (primary key) or to
+ * carry an edited value. `value` is `null` for SQL `NULL`. */
+export interface CellValue {
+  column: string;
+  value: string | null;
+}
+
 /** Comparison operator for the records quick-filter. */
 export type FilterOp =
   | "eq"
@@ -63,4 +70,10 @@ export interface RowFilter {
   column: string;
   operator: FilterOp;
   value: string;
+}
+
+/** A sort clause: `ORDER BY column [ASC|DESC]`. */
+export interface OrderBy {
+  column: string;
+  descending: boolean;
 }

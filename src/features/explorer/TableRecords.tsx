@@ -1,14 +1,32 @@
-import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, ChevronLeft, ChevronRight, Loader2, Play } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  History,
+  Loader2,
+  Play,
+  Plus,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 
 import { explorerApi } from "./api";
+import { CommandHistory } from "./CommandHistory";
 import { QuickFilter } from "./QuickFilter";
+import { RecordDialog } from "./RecordDialog";
 import { ResultGrid } from "./ResultGrid";
 import { SqlEditor } from "./SqlEditor";
-import type { QueryResult, RowFilter, TableRef } from "./types";
+import type {
+  CellValue,
+  ColumnInfo,
+  OrderBy,
+  QueryResult,
+  RowFilter,
+  TableRef,
+} from "./types";
 
 const PAGE_SIZE = 100;
 
@@ -20,8 +38,8 @@ interface TableRecordsProps {
 }
 
 /**
- * "Records" tab: browse a table's rows with the quick-filter and
- * pagination, or run free-form SQL against the connection.
+ * "Records" tab: browse a table's rows with the quick-filter, sorting and
+ * pagination, edit / insert / delete rows, or run free-form SQL.
  */
 export function TableRecords({ sessionId, table }: TableRecordsProps) {
   const [mode, setMode] = useState<Mode>("filter");
@@ -31,12 +49,31 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<RowFilter | null>(null);
+  const [sort, setSort] = useState<OrderBy | null>(null);
+  const [tableColumns, setTableColumns] = useState<ColumnInfo[]>([]);
+  const [openRow, setOpenRow] = useState<number | null>(null);
+  const [deleteIdx, setDeleteIdx] = useState<number | null>(null);
+  const [showInsert, setShowInsert] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectedSql, setSelectedSql] = useState("");
   const [sqlText, setSqlText] = useState(
     `SELECT * FROM "${table.schema}"."${table.name}" LIMIT 100;`,
   );
 
+  const pkColumns = useMemo(
+    () => tableColumns.filter((c) => c.is_primary_key).map((c) => c.name),
+    [tableColumns],
+  );
+  const columnTypes = useMemo(
+    () =>
+      Object.fromEntries(
+        tableColumns.map((c) => [c.name, c.data_type.toLowerCase()]),
+      ),
+    [tableColumns],
+  );
+
   const browse = useCallback(
-    async (f: RowFilter | null, p: number) => {
+    async (f: RowFilter | null, o: OrderBy | null, p: number) => {
       setLoading(true);
       setError(null);
       try {
@@ -45,6 +82,7 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
           table.schema,
           table.name,
           f,
+          o,
           PAGE_SIZE,
           p * PAGE_SIZE,
         );
@@ -63,32 +101,92 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
   // Initial unfiltered page. The component is remounted per table, so
   // this also covers switching tables.
   useEffect(() => {
-    void browse(null, 0);
+    void browse(null, null, 0);
   }, [browse]);
+
+  // Column metadata drives the primary key, JSON detection and insert form.
+  useEffect(() => {
+    explorerApi
+      .describeTable(sessionId, table.schema, table.name)
+      .then((d) => setTableColumns(d.columns))
+      .catch(() => setTableColumns([]));
+  }, [sessionId, table.schema, table.name]);
 
   const applyFilter = (f: RowFilter | null) => {
     setFilter(f);
     setPage(0);
-    void browse(f, 0);
+    void browse(f, sort, 0);
   };
 
   const goToPage = (p: number) => {
     setPage(p);
-    void browse(filter, p);
+    void browse(filter, sort, p);
+  };
+
+  // Cycle a column's sort: none → ascending → descending → none.
+  const cycleSort = (column: string) => {
+    const next: OrderBy | null =
+      !sort || sort.column !== column
+        ? { column, descending: false }
+        : !sort.descending
+          ? { column, descending: true }
+          : null;
+    setSort(next);
+    setPage(0);
+    void browse(filter, next, 0);
   };
 
   const runSql = async () => {
-    if (!sqlText.trim()) return;
+    const sql = selectedSql.trim() || sqlText;
+    if (!sql.trim()) return;
     setLoading(true);
     setError(null);
     try {
-      setResult(await explorerApi.runQuery(sessionId, sqlText));
+      setResult(await explorerApi.runQuery(sessionId, sql));
     } catch (e) {
       setError(String(e));
       setResult(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  // The primary key of a result row, for addressing it on update / delete.
+  const rowKey = (rowIndex: number): CellValue[] => {
+    const row = result!.rows[rowIndex];
+    return pkColumns.map((column) => ({
+      column,
+      value: row[result!.columns.indexOf(column)],
+    }));
+  };
+
+  const saveRow = async (changes: CellValue[]) => {
+    if (openRow === null || !result) return;
+    await explorerApi.updateRow(
+      sessionId,
+      table.schema,
+      table.name,
+      rowKey(openRow),
+      changes,
+    );
+    await browse(filter, sort, page);
+  };
+
+  const saveInsert = async (values: CellValue[]) => {
+    await explorerApi.insertRow(sessionId, table.schema, table.name, values);
+    await browse(filter, sort, page);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteIdx === null || !result) return;
+    await explorerApi.deleteRow(
+      sessionId,
+      table.schema,
+      table.name,
+      rowKey(deleteIdx),
+    );
+    setDeleteIdx(null);
+    await browse(filter, sort, page);
   };
 
   const rowCount = result?.rows.length ?? 0;
@@ -99,6 +197,26 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
       <div className="flex flex-col gap-2 border-b border-border px-4 py-2.5">
         <div className="flex items-center gap-2">
           <ModeSwitch mode={mode} onChange={setMode} />
+          {mode === "filter" && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={tableColumns.length === 0}
+              onClick={() => setShowInsert(true)}
+            >
+              <Plus />
+              Novo registro
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto"
+            onClick={() => setShowHistory(true)}
+          >
+            <History />
+            Histórico
+          </Button>
         </div>
 
         {mode === "filter" ? (
@@ -110,12 +228,17 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
         ) : (
           <div className="flex flex-col gap-2">
             <div className="h-40 overflow-hidden rounded-md border border-border">
-              <SqlEditor value={sqlText} onChange={setSqlText} onRun={runSql} />
+              <SqlEditor
+                value={sqlText}
+                onChange={setSqlText}
+                onRun={runSql}
+                onSelectionChange={setSelectedSql}
+              />
             </div>
             <div className="flex items-center gap-2">
               <Button size="sm" onClick={runSql} disabled={loading}>
                 {loading ? <Loader2 className="animate-spin" /> : <Play />}
-                Executar
+                {selectedSql.trim() ? "Executar seleção" : "Executar"}
               </Button>
               <span className="text-xs text-muted-foreground">⌘/Ctrl + ↵</span>
             </div>
@@ -136,7 +259,17 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
             </p>
           </Centered>
         ) : result ? (
-          <ResultGrid result={result} />
+          <ResultGrid
+            result={result}
+            sort={mode === "filter" ? sort : null}
+            onSort={mode === "filter" ? cycleSort : undefined}
+            onRowOpen={mode === "filter" ? setOpenRow : undefined}
+            onRowDelete={
+              mode === "filter" && pkColumns.length > 0
+                ? setDeleteIdx
+                : undefined
+            }
+          />
         ) : null}
       </div>
 
@@ -170,6 +303,51 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
           </div>
         )}
       </footer>
+
+      {openRow !== null && result && (
+        <RecordDialog
+          mode="edit"
+          columns={result.columns}
+          types={columnTypes}
+          pkColumns={pkColumns}
+          row={result.rows[openRow]}
+          onSave={saveRow}
+          onClose={() => setOpenRow(null)}
+        />
+      )}
+
+      {showInsert && (
+        <RecordDialog
+          mode="insert"
+          columns={tableColumns.map((c) => c.name)}
+          types={columnTypes}
+          pkColumns={pkColumns}
+          onSave={saveInsert}
+          onClose={() => setShowInsert(false)}
+        />
+      )}
+
+      {deleteIdx !== null && (
+        <ConfirmDialog
+          title="Excluir registro"
+          description="O registro será removido permanentemente. Esta ação não pode ser desfeita."
+          confirmLabel="Excluir"
+          destructive
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteIdx(null)}
+        />
+      )}
+
+      {showHistory && (
+        <CommandHistory
+          sessionId={sessionId}
+          onPick={(sql) => {
+            setMode("sql");
+            setSqlText(sql);
+          }}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   );
 }

@@ -2,6 +2,11 @@ import { useState } from "react";
 import { AlertCircle, Database, Loader2, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import logoUrl from "@/assets/postgly-logo.png";
 
 import { connectionsApi } from "./api";
@@ -40,52 +45,60 @@ export function ConnectionsScreen({ onConnect }: ConnectionsScreenProps) {
   };
 
   return (
-    <div className="flex h-full">
-      <BrandPanel />
+    <>
+      <ResizablePanelGroup direction="horizontal" className="h-full">
+        <ResizablePanel defaultSize={58} minSize={30}>
+          <BrandPanel />
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel defaultSize={42} minSize={30}>
+          <section className="flex h-full w-full flex-col bg-background">
+            <header className="flex items-center justify-between border-b border-border px-5 py-3">
+              <div>
+                <h1 className="text-base font-semibold leading-tight">
+                  Conexões
+                </h1>
+                <p className="text-xs text-muted-foreground">
+                  {connections.length === 0
+                    ? "Nenhuma conexão salva"
+                    : `${connections.length} conexão(ões) salva(s)`}
+                </p>
+              </div>
+              <Button size="sm" onClick={openCreate}>
+                <Plus />
+                Nova conexão
+              </Button>
+            </header>
 
-      <section className="flex h-full flex-1 flex-col bg-background">
-        <header className="flex items-center justify-between border-b border-border px-5 py-3">
-          <div>
-            <h1 className="text-base font-semibold leading-tight">Conexões</h1>
-            <p className="text-xs text-muted-foreground">
-              {connections.length === 0
-                ? "Nenhuma conexão salva"
-                : `${connections.length} conexão(ões) salva(s)`}
-            </p>
-          </div>
-          <Button size="sm" onClick={openCreate}>
-            <Plus />
-            Nova conexão
-          </Button>
-        </header>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <CenteredState>
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
-            </CenteredState>
-          ) : error ? (
-            <CenteredState>
-              <AlertCircle className="size-6 text-destructive" />
-              <p className="text-sm text-destructive">{error}</p>
-            </CenteredState>
-          ) : connections.length === 0 ? (
-            <EmptyState onCreate={openCreate} />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {connections.map((connection) => (
-                <ConnectionRow
-                  key={connection.id}
-                  connection={connection}
-                  onEdit={openEdit}
-                  onDelete={handleDelete}
-                  onConnect={onConnect}
-                />
-              ))}
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {loading ? (
+                <CenteredState>
+                  <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                </CenteredState>
+              ) : error ? (
+                <CenteredState>
+                  <AlertCircle className="size-6 text-destructive" />
+                  <p className="text-sm text-destructive">{error}</p>
+                </CenteredState>
+              ) : connections.length === 0 ? (
+                <EmptyState onCreate={openCreate} />
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {connections.map((connection) => (
+                    <ConnectionRow
+                      key={connection.id}
+                      connection={connection}
+                      onEdit={openEdit}
+                      onDelete={handleDelete}
+                      onConnect={onConnect}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </section>
+          </section>
+        </ResizablePanel>
+      </ResizablePanelGroup>
 
       <ConnectionForm
         open={formOpen}
@@ -93,17 +106,16 @@ export function ConnectionsScreen({ onConnect }: ConnectionsScreenProps) {
         editing={editing}
         onSaved={refresh}
       />
-    </div>
+    </>
   );
 }
 
 /**
- * Left-hand branding panel — an always-dark hero slab so the neon logo
- * reads consistently in both themes.
+ * Left-hand branding panel — a hero slab that follows the active theme.
  */
 function BrandPanel() {
   return (
-    <aside className="relative hidden w-[42%] shrink-0 overflow-hidden bg-neutral-950 sm:flex">
+    <aside className="relative flex h-full w-full items-center justify-center overflow-hidden bg-muted">
       {/* Green glow accents. */}
       <div className="absolute -left-16 -top-16 size-72 rounded-full bg-primary/20 blur-3xl" />
       <div className="absolute -bottom-20 -right-10 size-80 rounded-full bg-primary/15 blur-3xl" />
@@ -114,7 +126,7 @@ function BrandPanel() {
           alt="Postgly"
           className="w-48 drop-shadow-[0_0_30px_rgba(150,230,60,0.25)]"
         />
-        <p className="max-w-xs text-sm text-neutral-400">
+        <p className="max-w-xs text-sm text-muted-foreground">
           Gerencie seus bancos PostgreSQL em um só lugar — rápido, local e
           multiplataforma.
         </p>
