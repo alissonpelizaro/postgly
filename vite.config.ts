@@ -16,6 +16,12 @@ export default defineConfig(async () => ({
     },
   },
 
+  // The bundle ships inside the desktop binary — there is no network
+  // download — so a larger chunk (CodeMirror, etc.) is expected.
+  build: {
+    chunkSizeWarningLimit: 1500,
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

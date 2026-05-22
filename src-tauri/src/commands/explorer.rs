@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::connections;
 use crate::db::{
     self,
-    driver::{ConnectionConfig, SchemaInfo, TableDetails, TableInfo},
+    driver::{ConnectionConfig, QueryResult, RowFilter, SchemaInfo, TableDetails, TableInfo},
 };
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, Session};
@@ -102,5 +102,31 @@ pub async fn describe_table(
 ) -> AppResult<TableDetails> {
     session(&state, &session_id)?
         .describe_table(&schema, &table)
+        .await
+}
+
+/// Run an arbitrary SQL statement from the editor.
+#[tauri::command]
+pub async fn run_query(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    sql: String,
+) -> AppResult<QueryResult> {
+    session(&state, &session_id)?.execute(&sql).await
+}
+
+/// Browse a table's rows with an optional quick-filter and pagination.
+#[tauri::command]
+pub async fn browse_table(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    schema: String,
+    table: String,
+    filter: Option<RowFilter>,
+    limit: i64,
+    offset: i64,
+) -> AppResult<QueryResult> {
+    session(&state, &session_id)?
+        .browse_table(&schema, &table, filter.as_ref(), limit, offset)
         .await
 }
