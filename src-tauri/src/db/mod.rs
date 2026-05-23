@@ -15,3 +15,14 @@ pub fn make_driver(kind: DatabaseKind) -> Box<dyn DatabaseDriver> {
         DatabaseKind::Postgres => Box::new(postgres::PostgresDriver::new()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn make_driver_for_postgres_returns_a_postgres_driver() {
+        let driver = make_driver(DatabaseKind::Postgres);
+        assert_eq!(driver.kind(), DatabaseKind::Postgres);
+    }
+}

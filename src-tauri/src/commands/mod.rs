@@ -24,3 +24,15 @@ pub fn app_info() -> AppInfo {
         version: env!("CARGO_PKG_VERSION").into(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_info_returns_name_and_current_version() {
+        let info = app_info();
+        assert_eq!(info.name, "Postgly");
+        assert_eq!(info.version, env!("CARGO_PKG_VERSION"));
+    }
+}

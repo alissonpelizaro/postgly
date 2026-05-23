@@ -198,3 +198,129 @@ pub trait DatabaseDriver: Send + Sync {
     /// Close the connection / pool.
     async fn disconnect(&mut self) -> AppResult<()>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn database_kind_round_trips_through_json() {
+        let json = serde_json::to_string(&DatabaseKind::Postgres).unwrap();
+        assert_eq!(json, "\"postgres\"");
+        let parsed: DatabaseKind = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, DatabaseKind::Postgres);
+    }
+
+    #[test]
+    fn filter_op_round_trips_through_json() {
+        for (op, expected) in [
+            (FilterOp::Eq, "\"eq\""),
+            (FilterOp::Neq, "\"neq\""),
+            (FilterOp::Lt, "\"lt\""),
+            (FilterOp::Gt, "\"gt\""),
+            (FilterOp::Lte, "\"lte\""),
+            (FilterOp::Gte, "\"gte\""),
+            (FilterOp::Like, "\"like\""),
+            (FilterOp::ILike, "\"ilike\""),
+        ] {
+            assert_eq!(serde_json::to_string(&op).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn connection_config_deserializes_form_payload() {
+        let raw = r#"{
+            "name": "local",
+            "kind": "postgres",
+            "host": "h",
+            "port": 5432,
+            "database": "d",
+            "user": "u",
+            "password": "p"
+        }"#;
+        let cfg: ConnectionConfig = serde_json::from_str(raw).unwrap();
+        assert_eq!(cfg.name, "local");
+        assert_eq!(cfg.kind, DatabaseKind::Postgres);
+        assert_eq!(cfg.port, 5432);
+    }
+
+    #[test]
+    fn structs_round_trip_through_json() {
+        let info = SchemaInfo {
+            name: "public".into(),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let back: SchemaInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "public");
+
+        let table = TableInfo {
+            schema: "public".into(),
+            name: "users".into(),
+            is_view: false,
+        };
+        let back: TableInfo =
+            serde_json::from_str(&serde_json::to_string(&table).unwrap()).unwrap();
+        assert_eq!(back.name, "users");
+        assert!(!back.is_view);
+
+        let col = ColumnInfo {
+            name: "id".into(),
+            data_type: "int4".into(),
+            nullable: false,
+            default: Some("nextval(...)".into()),
+            is_primary_key: true,
+        };
+        let back: ColumnInfo = serde_json::from_str(&serde_json::to_string(&col).unwrap()).unwrap();
+        assert!(back.is_primary_key);
+        assert_eq!(back.default.as_deref(), Some("nextval(...)"));
+
+        let idx = IndexInfo {
+            name: "users_pk".into(),
+            columns: vec!["id".into()],
+            is_unique: true,
+            is_primary: true,
+        };
+        let back: IndexInfo = serde_json::from_str(&serde_json::to_string(&idx).unwrap()).unwrap();
+        assert!(back.is_primary);
+
+        let details = TableDetails {
+            columns: vec![col],
+            indexes: vec![idx],
+        };
+        let json = serde_json::to_string(&details).unwrap();
+        let back: TableDetails = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.columns.len(), 1);
+        assert_eq!(back.indexes.len(), 1);
+
+        let qr = QueryResult {
+            columns: vec!["a".into()],
+            rows: vec![vec![Some("1".into()), None]],
+            rows_affected: 1,
+        };
+        let back: QueryResult = serde_json::from_str(&serde_json::to_string(&qr).unwrap()).unwrap();
+        assert_eq!(back.rows_affected, 1);
+
+        let filter = RowFilter {
+            column: "c".into(),
+            operator: FilterOp::Like,
+            value: "%v%".into(),
+        };
+        let back: RowFilter =
+            serde_json::from_str(&serde_json::to_string(&filter).unwrap()).unwrap();
+        assert_eq!(back.value, "%v%");
+
+        let order = OrderBy {
+            column: "id".into(),
+            descending: true,
+        };
+        let back: OrderBy = serde_json::from_str(&serde_json::to_string(&order).unwrap()).unwrap();
+        assert!(back.descending);
+
+        let cell = CellValue {
+            column: "id".into(),
+            value: None,
+        };
+        let back: CellValue = serde_json::from_str(&serde_json::to_string(&cell).unwrap()).unwrap();
+        assert!(back.value.is_none());
+    }
+}
