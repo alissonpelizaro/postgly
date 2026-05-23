@@ -172,6 +172,7 @@ pub fn query_history(
 
 /// Browse a table's rows with an optional quick-filter, sort and pagination.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn browse_table(
     state: tauri::State<'_, AppState>,
     session_id: String,
@@ -183,6 +184,13 @@ pub async fn browse_table(
     offset: i64,
 ) -> AppResult<QueryResult> {
     session(&state, &session_id)?
-        .browse_table(&schema, &table, filter.as_ref(), order_by.as_ref(), limit, offset)
+        .browse_table(
+            &schema,
+            &table,
+            filter.as_ref(),
+            order_by.as_ref(),
+            limit,
+            offset,
+        )
         .await
 }

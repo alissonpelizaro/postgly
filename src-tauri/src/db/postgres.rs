@@ -404,10 +404,7 @@ impl DatabaseDriver for PostgresDriver {
     }
 
     fn query_history(&self) -> Vec<String> {
-        self.history
-            .lock()
-            .map(|h| h.clone())
-            .unwrap_or_default()
+        self.history.lock().map(|h| h.clone()).unwrap_or_default()
     }
 
     async fn update_row(
