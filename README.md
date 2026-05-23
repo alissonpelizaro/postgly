@@ -22,21 +22,64 @@ databases — fast, local and open. Built with **Tauri 2** (Rust) and
   never in a plain file.
 - **Light & dark themes**, following the system by default.
 
-## Download
+## Download & Install
 
-Grab the installer for your operating system from the latest release:
+Installers are currently **unsigned** — macOS and Windows will warn on
+first launch. Code signing / notarization is planned. All builds are
+listed on the [Releases page](https://github.com/alissonpelizaro/postgly/releases).
 
-| OS                       | Installer                                                                                                                                                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 🍎 macOS (Apple Silicon) | [Download `.dmg`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-arm64.dmg)                                                                                                                   |
-| 🍎 macOS (Intel)         | [Download `.dmg`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-x64.dmg)                                                                                                                     |
-| 🪟 Windows               | [`.exe`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64-setup.exe) / [`.msi`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64.msi)              |
-| 🐧 Linux                 | [`.AppImage`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-x86_64.AppImage) / [`.deb`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-amd64.deb)         |
+### 🍎 macOS
 
-> Installers are currently **unsigned** — macOS and Windows may warn on
-> first launch. Code signing / notarization is planned.
->
-> All builds are on the [Releases page](https://github.com/alissonpelizaro/postgly/releases).
+Download the `.dmg` for your CPU:
+
+- [Apple Silicon (`.dmg`)](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-arm64.dmg)
+- [Intel (`.dmg`)](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-x64.dmg)
+
+1. Open the `.dmg` and drag **Postgly.app** into `/Applications`.
+2. Because the bundle is not yet signed/notarized, macOS attaches a
+   quarantine attribute to anything downloaded via the browser. Clear it
+   once with:
+
+   ```bash
+   xattr -cr /Applications/Postgly.app
+   ```
+
+   Without this step, macOS will refuse to launch the app with the
+   message *"Postgly is damaged and can't be opened"*.
+3. Launch Postgly from Launchpad or `/Applications`.
+
+### 🪟 Windows
+
+Download the installer:
+
+- [`.exe` installer](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64-setup.exe)
+- [`.msi` (managed deploys)](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64.msi)
+
+1. Run the installer.
+2. Windows SmartScreen may show a *"Windows protected your PC"* warning
+   because the binary is unsigned — click **More info → Run anyway**.
+3. Postgly will be available from the Start menu.
+
+### 🐧 Linux
+
+Download a package:
+
+- [`.AppImage`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-x86_64.AppImage)
+- [`.deb` (Debian / Ubuntu)](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-amd64.deb)
+
+**AppImage** — make it executable and run:
+
+```bash
+chmod +x Postgly-linux-x86_64.AppImage
+./Postgly-linux-x86_64.AppImage
+```
+
+**Debian / Ubuntu** — install the `.deb`:
+
+```bash
+sudo dpkg -i Postgly-linux-amd64.deb
+sudo apt-get install -f   # pull missing deps if any
+```
 
 ---
 
