@@ -1,10 +1,10 @@
 //! Postgly — Tauri application entry point.
 
-mod commands;
-mod connections;
-mod db;
-mod error;
-mod state;
+pub mod commands;
+pub mod connections;
+pub mod db;
+pub mod error;
+pub mod state;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

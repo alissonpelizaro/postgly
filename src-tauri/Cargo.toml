@@ -34,3 +34,14 @@ keyring = { version = "3", features = [
     "sync-secret-service",
     "crypto-rust",
 ] }
+
+[features]
+# Swap the OS keyring for an in-memory store so tests don't touch the
+# host's real Keychain / Credential Manager / Secret Service. Enabled by
+# the CI test pipeline; never enabled in release builds.
+mock-keyring = []
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tempfile = "3"
+tauri = { version = "2", features = ["test"] }

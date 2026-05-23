@@ -63,16 +63,43 @@ app locally and how the codebase is organized.
 ### Development
 
 ```bash
-npm install        # install frontend dependencies
-npm run tauri dev  # run the desktop app with hot reload
+make install       # install frontend deps + cargo-llvm-cov
+make dev           # run the desktop app with hot reload
 ```
 
-Other scripts:
+`make help` lists every target. The most useful ones day to day:
 
 ```bash
-npm run typecheck    # type-check the frontend
-npm run tauri build  # produce an installable bundle for the host OS
+make web                # Vite frontend only (no Tauri shell)
+make typecheck          # type-check the frontend
+make fmt / make lint    # rustfmt / clippy on the backend
+make check              # fmt-check + clippy — same gate the CI runs
+make build              # produce an installable bundle for the host OS
 ```
+
+### Backend tests
+
+The Rust suite is split in two: in-process unit tests and integration
+tests that hit a real Postgres. `make pg-up` spins up an ephemeral
+`postgres:16-alpine` container (port `5544` by default) and exports
+`POSTGLY_TEST_DB_URL` so the integration tests pick it up automatically.
+
+```bash
+make test-unit          # unit tests only — no Postgres required
+make test-integration   # auto-starts the test container, runs the PG suite
+make test               # full suite (unit + integration)
+
+make coverage           # llvm-cov with the same >=90% gate the CI enforces
+make coverage-html      # browsable HTML report under target/llvm-cov/html
+make coverage-lcov      # lcov.info for editor coverage gutters
+
+make pg-up / pg-down    # control the test Postgres container
+make pg-psql            # psql shell into the test container
+```
+
+The CI workflow runs `cargo llvm-cov` with `--fail-under-lines 90
+--fail-under-file-lines 90`, so a PR that drops backend coverage below
+90% overall (or below 90% on any single file) fails the build.
 
 **Keyboard shortcuts:** `Cmd/Ctrl+1`–`9` jump to the Nth connection tab,
 `Cmd/Ctrl+0` returns to the connection manager, `Cmd/Ctrl+Enter` runs the
@@ -116,6 +143,8 @@ src-tauri/                Backend (Rust / Tauri)
     error.rs              AppError — the error type crossing IPC
     state.rs              open-connection session registry
     lib.rs                Tauri builder / entry point
+  tests/
+    postgres_driver.rs    integration suite (gated by POSTGLY_TEST_DB_URL)
 ```
 
 ### Architecture notes

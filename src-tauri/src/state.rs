@@ -20,3 +20,14 @@ pub struct AppState {
     /// Open connections, keyed by session id.
     pub sessions: Mutex<HashMap<String, Session>>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_app_state_has_no_sessions() {
+        let state = AppState::default();
+        assert!(state.sessions.lock().unwrap().is_empty());
+    }
+}

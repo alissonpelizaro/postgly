@@ -11,12 +11,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Cheap PR gate: type-check the frontend and lint the Rust code on a
-  # single Ubuntu runner. The full per-platform bundle build lives in
-  # release.yml and only runs when a version tag is pushed, to keep
-  # runner-minute usage low.
+  # Cheap PR gate: type-check the frontend, lint the Rust code and run
+  # the backend test suite with a real Postgres on a single Ubuntu
+  # runner. The full per-platform bundle build lives in release.yml and
+  # only runs when a version tag is pushed, to keep runner-minute usage
+  # low.
   check:
     runs-on: ubuntu-22.04
+
+    # Real PostgreSQL container the Rust integration tests connect to.
+    # The driver tests are gated on POSTGLY_TEST_DB_URL so they no-op
+    # on machines without a database.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,7 +47,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -46,4 +66,37 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
       - name: Clippy
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+        run: |
+          cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+          cargo clippy --manifest-path src-tauri/Cargo.toml \
+            --features mock-keyring --tests -- -D warnings
+
+      # `cargo llvm-cov` runs the unit + integration suite and computes
+      # line coverage in one shot. The PR fails when overall or
+      # per-file line coverage drops below 90%, so missing tests block
+      # the merge.
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Backend tests + coverage (>=90%)
+        working-directory: src-tauri
+        env:
+          POSTGLY_TEST_DB_URL: localhost:5432:test:test:test
+        run: |
+          cargo llvm-cov \
+            --features mock-keyring \
+            --ignore-filename-regex '(main\.rs|lib\.rs)$' \
+            --fail-under-lines 90 \
+            --fail-under-file-lines 90 \
+            --lcov --output-path lcov.info \
+            -- --test-threads=1
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: src-tauri/lcov.info
+          if-no-files-found: warn

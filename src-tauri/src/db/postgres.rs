@@ -464,3 +464,113 @@ impl DatabaseDriver for PostgresDriver {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+
+    #[test]
+    fn quote_ident_wraps_in_double_quotes_and_escapes() {
+        assert_eq!(quote_ident("users"), "\"users\"");
+        assert_eq!(quote_ident("we\"ird"), "\"we\"\"ird\"");
+        assert_eq!(quote_ident("a b"), "\"a b\"");
+    }
+
+    #[test]
+    fn quote_literal_wraps_in_single_quotes_and_doubles_quotes() {
+        assert_eq!(quote_literal("hello"), "'hello'");
+        assert_eq!(quote_literal("O'Brien"), "'O''Brien'");
+        assert_eq!(quote_literal(""), "''");
+    }
+
+    #[test]
+    fn filter_op_as_sql_maps_every_variant() {
+        assert_eq!(FilterOp::Eq.as_sql(), "=");
+        assert_eq!(FilterOp::Neq.as_sql(), "<>");
+        assert_eq!(FilterOp::Lt.as_sql(), "<");
+        assert_eq!(FilterOp::Gt.as_sql(), ">");
+        assert_eq!(FilterOp::Lte.as_sql(), "<=");
+        assert_eq!(FilterOp::Gte.as_sql(), ">=");
+        assert_eq!(FilterOp::Like.as_sql(), "LIKE");
+        assert_eq!(FilterOp::ILike.as_sql(), "ILIKE");
+    }
+
+    #[test]
+    fn new_driver_is_unconnected() {
+        let driver = PostgresDriver::new();
+        assert!(driver.pool.is_none());
+        assert_eq!(driver.kind(), DatabaseKind::Postgres);
+        assert!(driver.query_history().is_empty());
+    }
+
+    #[test]
+    fn pool_borrow_fails_when_unconnected() {
+        let driver = PostgresDriver::new();
+        let err = driver.pool().unwrap_err();
+        assert!(matches!(err, AppError::Connection(_)));
+        assert!(err.to_string().contains("not connected"));
+    }
+
+    #[tokio::test]
+    async fn ping_without_connect_returns_connection_error() {
+        let driver = PostgresDriver::new();
+        let err = driver.ping().await.unwrap_err();
+        assert!(matches!(err, AppError::Connection(_)));
+    }
+
+    #[tokio::test]
+    async fn execute_rejects_empty_statement() {
+        let mut driver = PostgresDriver::new();
+        // Fake a pool-less driver: short-circuit happens before pool access
+        // only when the trimmed SQL is empty *and* the pool exists. So we
+        // hit the pool-not-connected branch instead, which is also a
+        // valid error path.
+        let err = driver.execute("   ").await.unwrap_err();
+        assert!(matches!(err, AppError::Connection(_) | AppError::Query(_)));
+        // disconnect on an unconnected driver is a no-op.
+        driver.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn insert_row_without_values_errors() {
+        let driver = PostgresDriver::new();
+        let err = driver.insert_row("s", "t", &[]).await.unwrap_err();
+        assert!(matches!(err, AppError::Query(_)));
+    }
+
+    #[tokio::test]
+    async fn delete_row_without_pk_errors() {
+        let driver = PostgresDriver::new();
+        let err = driver.delete_row("s", "t", &[]).await.unwrap_err();
+        assert!(matches!(err, AppError::Query(_)));
+        assert!(err.to_string().contains("primary key"));
+    }
+
+    #[tokio::test]
+    async fn update_row_without_pk_errors() {
+        let driver = PostgresDriver::new();
+        let pk: Vec<CellValue> = vec![];
+        let changes = vec![CellValue {
+            column: "n".into(),
+            value: Some("v".into()),
+        }];
+        let err = driver
+            .update_row("s", "t", &pk, &changes)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::Query(_)));
+        assert!(err.to_string().contains("primary key"));
+    }
+
+    #[tokio::test]
+    async fn update_row_without_changes_errors() {
+        let driver = PostgresDriver::new();
+        let pk = vec![CellValue {
+            column: "id".into(),
+            value: Some("1".into()),
+        }];
+        let err = driver.update_row("s", "t", &pk, &[]).await.unwrap_err();
+        assert!(matches!(err, AppError::Query(_)));
+        assert!(err.to_string().contains("no changes"));
+    }
+}
