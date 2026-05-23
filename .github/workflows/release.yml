@@ -18,7 +18,7 @@ jobs:
           - platform: macos-latest # Apple Silicon
             target: aarch64-apple-darwin
             args: --target aarch64-apple-darwin
-          - platform: macos-13 # Intel
+          - platform: macos-latest # Intel (cross-compiled from arm64 host)
             target: x86_64-apple-darwin
             args: --target x86_64-apple-darwin
           - platform: ubuntu-22.04
@@ -67,3 +67,44 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  # After all platform builds finish, mirror each installer with a
+  # version-less filename so README links can point directly at
+  # `releases/latest/download/<stable-name>`.
+  mirror-stable-names:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Mirror assets with stable filenames
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir mirror && cd mirror
+          gh release download "$TAG" -R "$REPO" --skip-existing
+          shopt -s nullglob
+          declare -A map=(
+            ["Postgly_*_aarch64.dmg"]="Postgly-macos-arm64.dmg"
+            ["Postgly_*_x64.dmg"]="Postgly-macos-x64.dmg"
+            ["Postgly_*_x86_64.dmg"]="Postgly-macos-x64.dmg"
+            ["Postgly_*_amd64.AppImage"]="Postgly-linux-x86_64.AppImage"
+            ["Postgly_*_amd64.deb"]="Postgly-linux-amd64.deb"
+            ["Postgly-*.x86_64.rpm"]="Postgly-linux-x86_64.rpm"
+            ["Postgly_*_x64-setup.exe"]="Postgly-windows-x64-setup.exe"
+            ["Postgly_*_x64_en-US.msi"]="Postgly-windows-x64.msi"
+          )
+          uploads=()
+          for pattern in "${!map[@]}"; do
+            for src in $pattern; do
+              dest="${map[$pattern]}"
+              cp -f "$src" "$dest"
+              uploads+=("$dest")
+            done
+          done
+          if [ ${#uploads[@]} -gt 0 ]; then
+            gh release upload "$TAG" "${uploads[@]}" --clobber -R "$REPO"
+          fi
