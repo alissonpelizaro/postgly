@@ -38,6 +38,21 @@ Grab the installer for your operating system from the latest release:
 >
 > All builds are on the [Releases page](https://github.com/alissonpelizaro/postgly/releases).
 
+#### macOS: `"Postgly" is damaged and can't be opened`
+
+Because the bundle is not signed/notarized, macOS Gatekeeper attaches a
+quarantine attribute to anything downloaded via the browser and refuses
+to launch it. Drag the app to `/Applications` first, then clear the
+attribute once:
+
+```bash
+xattr -cr /Applications/Postgly.app
+```
+
+After that the app opens normally. Alternative: open **System Settings →
+Privacy & Security**, scroll to the Postgly message and click *Open
+Anyway*.
+
 ---
 
 ## Contributing
