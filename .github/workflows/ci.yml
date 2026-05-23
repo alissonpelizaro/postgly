@@ -11,8 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Fast feedback: type-check the frontend and lint the Rust code before
-  # spending minutes on the full per-platform bundle build.
+  # Cheap PR gate: type-check the frontend and lint the Rust code on a
+  # single Ubuntu runner. The full per-platform bundle build lives in
+  # release.yml and only runs when a version tag is pushed, to keep
+  # runner-minute usage low.
   check:
     runs-on: ubuntu-22.04
     steps:
@@ -45,41 +47,3 @@ jobs:
         run: cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
       - name: Clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-
-  # Verify the app actually bundles on every target OS.
-  build:
-    needs: check
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest # Apple Silicon
-          - platform: macos-13 # Intel
-          - platform: ubuntu-22.04
-          - platform: windows-latest
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
-            patchelf libxdo-dev libssl-dev
-
-      - run: npm ci
-      - name: Build app bundle
-        run: npm run tauri build
