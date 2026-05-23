@@ -26,12 +26,12 @@ databases — fast, local and open. Built with **Tauri 2** (Rust) and
 
 Grab the installer for your operating system from the latest release:
 
-| OS                       | Installer                                                                                   |
-| ------------------------ | ------------------------------------------------------------------------------------------- |
-| 🍎 macOS (Apple Silicon) | [Download `.dmg`](https://github.com/alissonpelizaro/postgly/releases/latest)               |
-| 🍎 macOS (Intel)         | [Download `.dmg`](https://github.com/alissonpelizaro/postgly/releases/latest)               |
-| 🪟 Windows               | [Download `.exe` / `.msi`](https://github.com/alissonpelizaro/postgly/releases/latest)      |
-| 🐧 Linux                 | [Download `.AppImage` / `.deb`](https://github.com/alissonpelizaro/postgly/releases/latest) |
+| OS                       | Installer                                                                                                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🍎 macOS (Apple Silicon) | [Download `.dmg`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-arm64.dmg)                                                                                                                   |
+| 🍎 macOS (Intel)         | [Download `.dmg`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-x64.dmg)                                                                                                                     |
+| 🪟 Windows               | [`.exe`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64-setup.exe) / [`.msi`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64.msi)              |
+| 🐧 Linux                 | [`.AppImage`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-x86_64.AppImage) / [`.deb`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-amd64.deb)         |
 
 > Installers are currently **unsigned** — macOS and Windows may warn on
 > first launch. Code signing / notarization is planned.

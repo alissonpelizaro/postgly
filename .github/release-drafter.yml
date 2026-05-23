@@ -1,0 +1,91 @@
+name-template: "v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
+
+categories:
+  - title: "🚀 Features"
+    labels:
+      - "feature"
+      - "enhancement"
+      - "feat"
+  - title: "🐛 Bug Fixes"
+    labels:
+      - "fix"
+      - "bug"
+      - "bugfix"
+  - title: "🧹 Maintenance"
+    labels:
+      - "chore"
+      - "refactor"
+      - "ci"
+      - "build"
+  - title: "📝 Documentation"
+    labels:
+      - "docs"
+      - "documentation"
+  - title: "⬆️ Dependencies"
+    labels:
+      - "dependencies"
+      - "deps"
+
+change-template: "- $TITLE (#$NUMBER) @$AUTHOR"
+change-title-escapes: '\<*_&'
+
+# Bump version based on Conventional Commits–style labels
+version-resolver:
+  major:
+    labels:
+      - "major"
+      - "breaking"
+  minor:
+    labels:
+      - "minor"
+      - "feature"
+      - "feat"
+      - "enhancement"
+  patch:
+    labels:
+      - "patch"
+      - "fix"
+      - "bug"
+      - "bugfix"
+      - "chore"
+      - "docs"
+      - "refactor"
+      - "ci"
+      - "build"
+      - "dependencies"
+  default: patch
+
+# Auto-label PRs from Conventional Commits title prefix
+autolabeler:
+  - label: "feat"
+    title:
+      - '/^feat(\(.+\))?(\!)?:/i'
+  - label: "fix"
+    title:
+      - '/^fix(\(.+\))?(\!)?:/i'
+  - label: "docs"
+    title:
+      - '/^docs(\(.+\))?:/i'
+  - label: "chore"
+    title:
+      - '/^chore(\(.+\))?:/i'
+  - label: "refactor"
+    title:
+      - '/^refactor(\(.+\))?:/i'
+  - label: "ci"
+    title:
+      - '/^ci(\(.+\))?:/i'
+  - label: "build"
+    title:
+      - '/^build(\(.+\))?:/i'
+  - label: "breaking"
+    title:
+      - '/!:/'
+
+template: |
+  ## What's changed
+
+  $CHANGES
+
+  **Full changelog:** https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
