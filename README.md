@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="src/assets/postgly-logo-named.png" alt="Postgly" width="376" />
-
-# Postgly
+<img src="src/assets/postgly-logo-named.png" alt="Postgly" width="200" />
 
 **The modern, local-first PostgreSQL client — now with a natural-language SQL assistant.**
 
@@ -25,11 +23,11 @@ All builds on the [Releases page](https://github.com/alissonpelizaro/postgly/rel
 
 ---
 
-## ✨ Ask your database in plain English (or Portuguese)
+## ✨ Ask your database in plain natural language
 
 Postgly ships with a **natural-language SQL assistant**. Describe what you want; the agent inspects your live schema with real tool calls (`list_tables`, `describe_table`, `list_relations`, `sample_rows`) and hands back a query you can review before running.
 
-> *"todos os usuários cadastrados no mês passado"*
+> *"new users from last month"*
 > → `SELECT * FROM public.users WHERE created_at >= date_trunc('month', now() - interval '1 month') AND created_at < date_trunc('month', now());`
 
 - 🧠 **Bring your own LLM** — any OpenAI-compatible endpoint (OpenAI, Ollama, Groq, Together, …). API key lives in the OS keyring.
