@@ -396,4 +396,62 @@ mod tests {
         assert!(loaded.connections.is_empty());
         assert!(loaded.settings.is_empty());
     }
+
+    #[test]
+    fn rejects_corrupt_envelope_json() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vault.json");
+        fs::write(&path, "{not-json").unwrap();
+        let err = load_plain_from(&path).unwrap_err();
+        assert!(err.to_string().contains("corrupt vault"));
+    }
+
+    #[test]
+    fn rejects_unsupported_version() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vault.json");
+        let raw = serde_json::json!({
+            "version": 999,
+            "salt_b64": base64::engine::general_purpose::STANDARD.encode([0u8; 16]),
+            "nonce_b64": base64::engine::general_purpose::STANDARD.encode([0u8; 12]),
+            "ciphertext_b64": base64::engine::general_purpose::STANDARD.encode([1u8,2u8,3u8]),
+        });
+        fs::write(&path, serde_json::to_string(&raw).unwrap()).unwrap();
+        let err = load_plain_from(&path).unwrap_err();
+        assert!(err.to_string().contains("unsupported vault version"));
+    }
+
+    #[test]
+    fn rejects_invalid_salt_and_nonce_lengths() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vault.json");
+        let raw = serde_json::json!({
+            "version": VAULT_VERSION,
+            "salt_b64": base64::engine::general_purpose::STANDARD.encode([0u8; 8]),
+            "nonce_b64": base64::engine::general_purpose::STANDARD.encode([0u8; 4]),
+            "ciphertext_b64": base64::engine::general_purpose::STANDARD.encode([1u8,2u8,3u8]),
+        });
+        fs::write(&path, serde_json::to_string(&raw).unwrap()).unwrap();
+        let err = load_plain_from(&path).unwrap_err();
+        assert!(
+            err.to_string().contains("salt length") || err.to_string().contains("nonce length")
+        );
+    }
+
+    #[test]
+    fn rejects_tampered_ciphertext() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("vault.json");
+        let mut plain = VaultPlain::default();
+        plain.connections.insert("a".into(), "pw".into());
+        save_plain_to(&path, &plain).unwrap();
+
+        let mut envelope: VaultEnvelope =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        envelope.ciphertext_b64 = base64::engine::general_purpose::STANDARD.encode([9u8; 32]);
+        fs::write(&path, serde_json::to_string(&envelope).unwrap()).unwrap();
+
+        let err = load_plain_from(&path).unwrap_err();
+        assert!(err.to_string().contains("cannot decrypt vault"));
+    }
 }
