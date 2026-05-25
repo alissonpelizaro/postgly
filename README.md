@@ -62,6 +62,7 @@ Postgly ships with a **natural-language SQL assistant**. Describe what you want;
 Installers are currently **unsigned** — first-launch warnings on macOS and Windows are expected. Code signing / notarization is planned.
 
 ### 🍎 macOS
+Download: [**macOS — Apple Silicon**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-arm64.dmg) or [**macOS — Intel**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-x64.dmg)
 
 1. Open the `.dmg`, drag **Postgly.app** into `/Applications`.
 2. Clear the quarantine attribute (one-time, required because the bundle is unsigned):
@@ -74,6 +75,7 @@ Installers are currently **unsigned** — first-launch warnings on macOS and Win
 3. Launch from Launchpad or `/Applications`.
 
 ### 🪟 Windows
+Download: [**Windows (.exe)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64-setup.exe)
 
 1. Run the [`.exe` installer](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64-setup.exe) (or the [`.msi`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64.msi) for managed deploys).
 2. SmartScreen may show *"Windows protected your PC"* — click **More info → Run anyway**.
@@ -82,6 +84,7 @@ Installers are currently **unsigned** — first-launch warnings on macOS and Win
 ### 🐧 Linux
 
 **AppImage**
+Download: [**Linux (.AppImage)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-x86_64.AppImage)
 
 ```bash
 chmod +x Postgly-linux-x86_64.AppImage
@@ -89,6 +92,7 @@ chmod +x Postgly-linux-x86_64.AppImage
 ```
 
 **Debian / Ubuntu**
+Download: [**Linux (.deb)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-amd64.deb)
 
 ```bash
 sudo dpkg -i Postgly-linux-amd64.deb
