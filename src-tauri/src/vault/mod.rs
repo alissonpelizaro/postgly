@@ -249,7 +249,7 @@ mod mock_vault {
     fn with_store<R>(f: impl FnOnce(&mut MockVault) -> R) -> R {
         let mut guard = STORE.lock().expect("mock vault poisoned");
         let map = guard.get_or_insert_with(HashMap::new);
-        let vault = map.entry(scope_key()).or_insert_with(MockVault::default);
+        let vault = map.entry(scope_key()).or_default();
         f(vault)
     }
 
