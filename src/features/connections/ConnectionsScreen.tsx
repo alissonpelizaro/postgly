@@ -124,7 +124,7 @@ function BrandPanel() {
         <img
           src={logoUrl}
           alt="Postgly"
-          className="w-48 drop-shadow-[0_0_30px_rgba(150,230,60,0.25)]"
+          className="w-48 drop-shadow-[0_0_30px_rgba(74,144,229,0.3)]"
         />
         <p className="max-w-xs text-sm text-muted-foreground">
           Gerencie seus bancos PostgreSQL em um só lugar — rápido, local e
