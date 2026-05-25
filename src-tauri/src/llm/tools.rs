@@ -12,12 +12,17 @@ use serde_json::{json, Value};
 
 use super::chat::ToolDef;
 use crate::db::driver::DatabaseSchema;
+use crate::db::sql_safety;
 use crate::error::{AppError, AppResult};
 use crate::state::Session;
 
 /// Hard upper bound for `sample_rows` — the LLM should explore, not pull
 /// the table down.
 pub const SAMPLE_ROW_HARD_LIMIT: i64 = 20;
+
+/// Hard upper bound on rows returned by `run_select` so the agent can't
+/// flood its own context with a giant table.
+pub const RUN_SELECT_ROW_LIMIT: usize = 100;
 
 /// Tool executor abstraction so the agent loop can be tested with a
 /// fake that records calls. Production uses [`SessionTools`].
@@ -33,11 +38,24 @@ pub trait ToolExecutor: Send + Sync {
 pub struct SessionTools {
     session: Session,
     schema: Arc<DatabaseSchema>,
+    /// When `true`, even non-destructive writes (INSERT, UPDATE/DELETE
+    /// with WHERE) bounce through the confirmation card. Truly
+    /// destructive statements always require confirmation regardless.
+    confirm_writes: bool,
 }
 
 impl SessionTools {
     pub fn new(session: Session, schema: Arc<DatabaseSchema>) -> Self {
-        Self { session, schema }
+        Self {
+            session,
+            schema,
+            confirm_writes: false,
+        }
+    }
+
+    pub fn with_confirm_writes(mut self, confirm: bool) -> Self {
+        self.confirm_writes = confirm;
+        self
     }
 
     /// The JSON-schema-shaped tool definitions handed to the LLM.
@@ -83,6 +101,49 @@ impl SessionTools {
                         "name":   { "type": "string", "description": "Table name." }
                     },
                     "required": ["schema", "name"],
+                    "additionalProperties": false
+                }),
+            ),
+            ToolDef::function(
+                "run_select",
+                "Execute a read-only SELECT (or WITH/EXPLAIN/SHOW) query against the connected \
+                 database and return the rows. Rejects anything that mutates the database — \
+                 use this only when you need real data the user asked about. At most 100 rows \
+                 are returned; ask the user before running queries that would return more.",
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "sql": {
+                            "type": "string",
+                            "description": "A single SELECT statement. No semicolon batches, no DML/DDL."
+                        }
+                    },
+                    "required": ["sql"],
+                    "additionalProperties": false
+                }),
+            ),
+            ToolDef::function(
+                "run_write",
+                "Execute an INSERT/UPDATE/DELETE/DDL statement against the connected database. \
+                 Non-destructive writes (INSERT, UPDATE/DELETE with WHERE) run immediately when \
+                 the safety setting allows. Destructive statements (DROP/TRUNCATE/ALTER/CREATE, \
+                 or UPDATE/DELETE without WHERE) are NOT executed — the tool returns a \
+                 `needs_approval` payload and the host application surfaces an approval card to \
+                 the user. When that happens, STOP and tell the user what you propose to do and \
+                 why; do not retry the same statement.",
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "sql": {
+                            "type": "string",
+                            "description": "A single mutating statement. No semicolon batches."
+                        },
+                        "summary": {
+                            "type": "string",
+                            "description": "A short human-readable explanation of what this statement does and why."
+                        }
+                    },
+                    "required": ["sql", "summary"],
                     "additionalProperties": false
                 }),
             ),
@@ -198,6 +259,93 @@ impl SessionTools {
         }))
     }
 
+    async fn run_select(&self, sql: &str) -> AppResult<Value> {
+        let analysis = sql_safety::analyze(sql);
+        if analysis.statements.is_empty() {
+            return Err(AppError::Other("empty SQL".into()));
+        }
+        if analysis.statements.len() > 1 {
+            return Err(AppError::Other(
+                "run_select accepts a single statement; remove the extra `;`".into(),
+            ));
+        }
+        let kind = analysis.statements[0].kind;
+        if kind != sql_safety::StatementKind::Select {
+            return Err(AppError::Other(format!(
+                "run_select rejects {:?} statements — only SELECT/WITH/EXPLAIN/SHOW are allowed",
+                kind
+            )));
+        }
+        let result = self.session.execute(sql).await?;
+        let total_rows = result.rows.len();
+        let truncated = total_rows > RUN_SELECT_ROW_LIMIT;
+        let rows: Vec<_> = result
+            .rows
+            .into_iter()
+            .take(RUN_SELECT_ROW_LIMIT)
+            .collect();
+        Ok(json!({
+            "columns": result.columns,
+            "rows": rows,
+            "row_count": total_rows,
+            "truncated": truncated,
+            "row_limit": RUN_SELECT_ROW_LIMIT,
+        }))
+    }
+
+    async fn run_write(&self, sql: &str, summary: &str) -> AppResult<Value> {
+        let analysis = sql_safety::analyze(sql);
+        if analysis.statements.is_empty() {
+            return Err(AppError::Other("empty SQL".into()));
+        }
+        if analysis.statements.len() > 1 {
+            return Err(AppError::Other(
+                "run_write accepts a single statement; remove the extra `;`".into(),
+            ));
+        }
+        let stmt = &analysis.statements[0];
+        let kind = stmt.kind;
+        if kind == sql_safety::StatementKind::Select {
+            return Err(AppError::Other(
+                "run_write is for mutations; use run_select for SELECTs".into(),
+            ));
+        }
+        if kind == sql_safety::StatementKind::Other {
+            return Err(AppError::Other(
+                "run_write could not classify this statement; refine the SQL".into(),
+            ));
+        }
+
+        let is_dml_with_where = matches!(
+            kind,
+            sql_safety::StatementKind::Update | sql_safety::StatementKind::Delete
+        ) && stmt.has_where;
+        let is_plain_insert = kind == sql_safety::StatementKind::Insert;
+        let auto_safe = is_plain_insert || is_dml_with_where;
+        let needs_approval = !auto_safe || self.confirm_writes;
+
+        if needs_approval {
+            return Ok(json!({
+                "needs_approval": true,
+                "sql": sql,
+                "summary": summary,
+                "kind": kind,
+                "preview": stmt.preview,
+                "destructive": analysis.destructive,
+                "unbounded_dml": analysis.unbounded_dml,
+                "has_where": stmt.has_where,
+            }));
+        }
+
+        let result = self.session.execute(sql).await?;
+        Ok(json!({
+            "needs_approval": false,
+            "executed": true,
+            "kind": kind,
+            "rows_affected": result.rows_affected,
+        }))
+    }
+
     async fn sample_rows(&self, schema: &str, name: &str, limit: i64) -> AppResult<Value> {
         let exists = self
             .schema
@@ -249,6 +397,24 @@ impl ToolExecutor for SessionTools {
                 let (s, n) = extract_schema_and_name(&args)?;
                 let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(5);
                 self.sample_rows(&s, &n, limit).await
+            }
+            "run_select" => {
+                let sql = args
+                    .get("sql")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| AppError::Other("missing required `sql` argument".into()))?;
+                self.run_select(sql).await
+            }
+            "run_write" => {
+                let sql = args
+                    .get("sql")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| AppError::Other("missing required `sql` argument".into()))?;
+                let summary = args
+                    .get("summary")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                self.run_write(sql, summary).await
             }
             other => Err(AppError::Other(format!("unknown tool: {other}"))),
         }
@@ -445,7 +611,7 @@ mod tests {
     }
 
     #[test]
-    fn definitions_expose_four_tools_with_expected_names() {
+    fn definitions_expose_tools_with_expected_names() {
         let defs = SessionTools::definitions();
         let names: Vec<&str> = defs.iter().map(|d| d.function.name.as_str()).collect();
         assert_eq!(
@@ -454,6 +620,8 @@ mod tests {
                 "list_tables",
                 "describe_table",
                 "list_relations",
+                "run_select",
+                "run_write",
                 "sample_rows"
             ]
         );

@@ -4,10 +4,12 @@ use std::sync::Arc;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::{Deserialize, Serialize};
+
 use crate::db::driver::DatabaseSchema;
 use crate::error::{AppError, AppResult};
 use crate::llm::agent::{self, AgentOutput, AgentStatus};
-use crate::llm::chat::ChatClient;
+use crate::llm::chat::{ChatClient, ChatMessage, ChatRequest, Role, TokenUsage};
 use crate::llm::fuzzy;
 use crate::llm::tools::SessionTools;
 use crate::settings::{self, LLM_API_KEY_ACCOUNT};
@@ -94,6 +96,352 @@ pub async fn generate_sql<R: tauri::Runtime>(
     );
 
     Ok(output)
+}
+
+/// One turn passed in from the frontend chat history. We accept a
+/// minimal shape so the localStorage payload stays small — system
+/// prompt is injected here, tool messages don't exist yet (Phase 2).
+#[derive(Debug, Deserialize)]
+pub struct ChatTurn {
+    pub role: String,
+    pub content: String,
+}
+
+/// Response shape returned to the frontend chat panel.
+#[derive(Debug, Serialize)]
+pub struct AgentChatResponse {
+    pub content: String,
+    pub usage: TokenUsage,
+    /// Tool-use trace, present when the chat ran against a connected
+    /// database. Empty when the chat had no database session bound.
+    #[serde(default)]
+    pub trace: Vec<agent::TraceEvent>,
+}
+
+/// Conversational system prompt used when the chat has no database
+/// session attached. The model can still answer general questions and
+/// propose SQL, but it cannot inspect or execute against any database.
+fn conversational_system_prompt() -> String {
+    "You are a friendly, concise PostgreSQL assistant embedded in a database \
+     client. Answer the user's questions in natural language. Keep responses \
+     short and helpful. The user has not opened a database connection in \
+     this chat — explain that you can't inspect schemas or run queries, and \
+     suggest they open a connection tab to enable those features. When \
+     proposing SQL anyway, render it inside a fenced ```sql code block."
+        .to_string()
+}
+
+/// Conversational system prompt used when a database session is bound.
+/// The model has read-only tools for schema lookup, SELECT execution
+/// and gated write/DDL execution.
+fn conversational_system_prompt_with_tools() -> String {
+    "You are a friendly, concise PostgreSQL assistant embedded in a database \
+     client. You have a live connection to the user's database and a set of \
+     tools to explore and modify it.\n\n\
+     Rules:\n\
+     - Always look things up before answering. Use `list_tables`, \
+       `describe_table` and `list_relations` to confirm tables, columns and joins.\n\
+     - When the user asks for data, use `run_select` to run the query and \
+       report what you actually saw. Quote real values, not made-up ones.\n\
+     - `run_select` returns at most 100 rows. If `truncated` is true, mention \
+       it and suggest a narrower filter.\n\
+     - When the user asks to change the database, use `run_write`. Pass a \
+       single statement plus a short `summary` of what it does and why.\n\
+     - If `run_write` returns `needs_approval: true`, the host is showing the \
+       user an approval card. STOP and explain in plain language what you're \
+       proposing — do NOT call `run_write` again with the same SQL, and do \
+       not pretend it ran. The user will approve or reject.\n\
+     - If `run_write` returns `executed: true`, the statement ran. Report \
+       `rows_affected` to the user.\n\
+     - Answer in natural language. Keep responses short. Render SQL inside \
+       fenced ```sql blocks when you want the user to see it."
+        .to_string()
+}
+
+/// Send a chat message to the configured LLM and return the assistant's
+/// reply. Stateless: the frontend ships the entire conversation history
+/// each turn (kept in localStorage with a 180-day TTL). When
+/// `connection_session_id` is set, the LLM is given read-only tools to
+/// inspect and query that database session.
+#[tauri::command]
+pub async fn agent_chat_send<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    history: Vec<ChatTurn>,
+    instruction: String,
+    connection_session_id: Option<String>,
+    model_override: Option<String>,
+    temperature_override: Option<f32>,
+) -> AppResult<AgentChatResponse> {
+    if instruction.trim().is_empty() {
+        return Err(AppError::Other("instruction is empty".into()));
+    }
+
+    let cfg = settings::load(&app)?.llm;
+    if cfg.base_url.trim().is_empty() || cfg.model.trim().is_empty() {
+        return Err(AppError::Other(
+            "LLM is not configured — set base URL and model in Settings.".into(),
+        ));
+    }
+    let api_key = settings::get_secret(LLM_API_KEY_ACCOUNT)?;
+    if api_key.trim().is_empty() {
+        return Err(AppError::Other(
+            "LLM API key is not configured — set it in Settings.".into(),
+        ));
+    }
+
+    let effective_model = model_override
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(cfg.model.as_str());
+    let effective_temperature = temperature_override
+        .map(|t| t.clamp(0.0, 2.0))
+        .unwrap_or(cfg.temperature);
+
+    let bound = connection_session_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
+
+    let system_prompt = if bound.is_some() {
+        conversational_system_prompt_with_tools()
+    } else {
+        conversational_system_prompt()
+    };
+
+    let mut messages: Vec<ChatMessage> = Vec::with_capacity(history.len() + 2);
+    messages.push(ChatMessage::system(system_prompt));
+    for turn in history {
+        let role = match turn.role.as_str() {
+            "user" => Role::User,
+            "assistant" => Role::Assistant,
+            // Skip anything unexpected (system, tool, ...) — the chat
+            // panel doesn't ship those.
+            _ => continue,
+        };
+        messages.push(ChatMessage {
+            role,
+            content: Some(turn.content),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+            name: None,
+        });
+    }
+    messages.push(ChatMessage::user(instruction));
+
+    let client = ChatClient::new(&cfg.base_url, &api_key);
+
+    if let Some(session_id) = bound {
+        let session = session_for(&state, session_id)?;
+        let schema = get_database_schema(state.clone(), session_id.to_string()).await?;
+        let safety = settings::load(&app)?.safety;
+        let tool_defs = SessionTools::definitions();
+        let executor = SessionTools::new(session, Arc::clone(&schema))
+            .with_confirm_writes(safety.confirm_destructive);
+
+        let output = agent::run_chat(
+            &client,
+            tool_defs,
+            &executor,
+            effective_model,
+            effective_temperature,
+            messages,
+        )
+        .await?;
+
+        if output.content.trim().is_empty() {
+            return Err(AppError::Other(
+                "LLM returned an empty response. Try rephrasing your message.".into(),
+            ));
+        }
+        return Ok(AgentChatResponse {
+            content: output.content,
+            usage: output.usage,
+            trace: output.trace,
+        });
+    }
+
+    let request = ChatRequest {
+        model: effective_model.to_string(),
+        messages,
+        temperature: Some(effective_temperature),
+        tools: Vec::new(),
+    };
+    let response = client.send(&request).await?;
+    let usage = response.usage.unwrap_or_default();
+    let choice = response
+        .choices
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::Other("LLM returned no choices".into()))?;
+    let content = choice.message.content.unwrap_or_default();
+    if content.trim().is_empty() {
+        return Err(AppError::Other(
+            "LLM returned an empty response. Try rephrasing your message.".into(),
+        ));
+    }
+    Ok(AgentChatResponse {
+        content,
+        usage,
+        trace: Vec::new(),
+    })
+}
+
+/// Result of approving and executing a pending mutation from the chat
+/// approval card. Mirrors the explorer's `QueryResult` but drops the
+/// row payload — the chat just needs the affected-row count.
+#[derive(Debug, Serialize)]
+pub struct ChatMutationResult {
+    pub rows_affected: u64,
+    pub kind: String,
+}
+
+/// Execute a SQL statement that the chat agent previously proposed and
+/// the user just approved in the inline confirmation card. Re-runs the
+/// safety classifier so a tampered payload still hits the safety net
+/// (the executed kind is reported back so the UI can render it).
+#[tauri::command]
+pub async fn agent_execute_pending_mutation(
+    state: tauri::State<'_, AppState>,
+    connection_session_id: String,
+    sql: String,
+) -> AppResult<ChatMutationResult> {
+    if sql.trim().is_empty() {
+        return Err(AppError::Other("empty SQL".into()));
+    }
+    let analysis = crate::db::sql_safety::analyze(&sql);
+    if analysis.statements.is_empty() {
+        return Err(AppError::Other("could not parse SQL".into()));
+    }
+    if analysis.statements.len() > 1 {
+        return Err(AppError::Other(
+            "approval covers a single statement; the payload had a `;` batch".into(),
+        ));
+    }
+    let kind = analysis.statements[0].kind;
+    if kind == crate::db::sql_safety::StatementKind::Select {
+        return Err(AppError::Other(
+            "this command is for mutations; SELECTs run inline through the agent".into(),
+        ));
+    }
+
+    let session = session_for(&state, &connection_session_id)?;
+    let result = session.execute(&sql).await?;
+    // DDL invalidates the cached schema; do it for any non-SELECT to
+    // keep the cache aligned (cheap — next tool call re-introspects).
+    if let Ok(mut cache) = state.schema_cache.lock() {
+        cache.remove(&connection_session_id);
+    }
+    Ok(ChatMutationResult {
+        rows_affected: result.rows_affected,
+        kind: format!("{:?}", kind).to_lowercase(),
+    })
+}
+
+/// Ask the LLM for a 3-6 word title that summarizes the conversation
+/// so far. Uses a tiny, deterministic completion (no tools, low
+/// temperature). Failures are surfaced — the frontend can fall back to
+/// the heuristic title it already has.
+#[tauri::command]
+pub async fn agent_generate_title<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    history: Vec<ChatTurn>,
+) -> AppResult<String> {
+    let user_turns: Vec<&ChatTurn> = history
+        .iter()
+        .filter(|t| matches!(t.role.as_str(), "user" | "assistant"))
+        .collect();
+    if user_turns.is_empty() {
+        return Err(AppError::Other("history is empty".into()));
+    }
+
+    let cfg = settings::load(&app)?.llm;
+    if cfg.base_url.trim().is_empty() || cfg.model.trim().is_empty() {
+        return Err(AppError::Other("LLM is not configured.".into()));
+    }
+    let api_key = settings::get_secret(LLM_API_KEY_ACCOUNT)?;
+    if api_key.trim().is_empty() {
+        return Err(AppError::Other("LLM API key is not configured.".into()));
+    }
+
+    let mut messages = vec![ChatMessage::system(
+        "You write very short titles (3 to 6 words) summarizing what a user is \
+         asking a database assistant about. Respond with the title text only — \
+         no quotes, no punctuation at the end, no prefix like 'Title:'. Match the \
+         language of the user.",
+    )];
+    // Cap the history we send: a few turns is plenty for a title and
+    // keeps the call cheap.
+    for turn in user_turns.iter().take(6) {
+        let role = if turn.role == "assistant" { Role::Assistant } else { Role::User };
+        messages.push(ChatMessage {
+            role,
+            content: Some(turn.content.clone()),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+            name: None,
+        });
+    }
+    messages.push(ChatMessage::user(
+        "Reply with the title only, 3-6 words.",
+    ));
+
+    let client = ChatClient::new(&cfg.base_url, &api_key);
+    let request = ChatRequest {
+        model: cfg.model.clone(),
+        messages,
+        temperature: Some(0.2),
+        tools: Vec::new(),
+    };
+    let response = client.send(&request).await?;
+    let content = response
+        .choices
+        .into_iter()
+        .next()
+        .and_then(|c| c.message.content)
+        .unwrap_or_default();
+    let title = clean_title(&content);
+    if title.is_empty() {
+        return Err(AppError::Other("LLM returned an empty title".into()));
+    }
+    Ok(title)
+}
+
+/// Trim noise the model often adds around a title: surrounding quotes,
+/// trailing punctuation, and stray "Title:" prefixes.
+fn clean_title(raw: &str) -> String {
+    let mut s = raw.trim().to_string();
+    // Strip a "Title:" / "Título:" prefix the model sometimes adds.
+    for prefix in ["Title:", "title:", "Título:", "título:", "Titulo:", "titulo:"] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            s = rest.trim().to_string();
+        }
+    }
+    // Drop wrapping quotes.
+    let bytes = s.as_bytes();
+    if bytes.len() >= 2 {
+        let first = bytes[0] as char;
+        let last = bytes[bytes.len() - 1] as char;
+        if matches!(first, '"' | '\'' | '`' | '“' | '‘')
+            && matches!(last, '"' | '\'' | '`' | '”' | '’')
+        {
+            s = s[1..s.len() - 1].trim().to_string();
+        }
+    }
+    // Trim trailing punctuation.
+    while let Some(c) = s.chars().last() {
+        if matches!(c, '.' | ',' | '!' | '?' | ';' | ':') {
+            s.pop();
+            s = s.trim_end().to_string();
+        } else {
+            break;
+        }
+    }
+    // Collapse whitespace + cap length.
+    let collapsed: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() > 80 {
+        collapsed.chars().take(80).collect()
+    } else {
+        collapsed
+    }
 }
 
 /// Snapshot the session's natural-language query history, newest first.
