@@ -387,9 +387,7 @@ mod tests {
                 // analyze_statement extractor has something to read.
                 return Ok(QueryResult {
                     columns: vec!["QUERY PLAN".into()],
-                    rows: vec![vec![Some(
-                        r#"[{"Plan":{"Plan Rows": 42}}]"#.into(),
-                    )]],
+                    rows: vec![vec![Some(r#"[{"Plan":{"Plan Rows": 42}}]"#.into())]],
                     rows_affected: 1,
                 });
             }
@@ -642,7 +640,10 @@ mod tests {
         assert!(view.explain_error.is_none());
         // No execute call: SELECTs short-circuit before touching the driver.
         let driver = session_for(&app.state::<AppState>(), "s").unwrap();
-        assert!(driver.query_history().iter().all(|c| !c.contains("execute")));
+        assert!(driver
+            .query_history()
+            .iter()
+            .all(|c| !c.contains("execute")));
     }
 
     #[tokio::test]

@@ -20,9 +20,7 @@ pub fn levenshtein(a: &str, b: &str) -> usize {
         curr[0] = i + 1;
         for (j, cb) in b.iter().enumerate() {
             let cost = if ca == cb { 0 } else { 1 };
-            curr[j + 1] = (curr[j] + 1)
-                .min(prev[j + 1] + 1)
-                .min(prev[j] + cost);
+            curr[j + 1] = (curr[j] + 1).min(prev[j + 1] + 1).min(prev[j] + cost);
         }
         std::mem::swap(&mut prev, &mut curr);
     }
@@ -55,11 +53,7 @@ pub fn extract_tokens(text: &str) -> Vec<String> {
 /// closely they match any token in `tokens`. Returns deduplicated
 /// entries in best-first order. Filters out matches that are clearly
 /// unrelated (distance > half the table-name length).
-pub fn nearest_table_names(
-    schema: &DatabaseSchema,
-    tokens: &[String],
-    max: usize,
-) -> Vec<String> {
+pub fn nearest_table_names(schema: &DatabaseSchema, tokens: &[String], max: usize) -> Vec<String> {
     if tokens.is_empty() {
         return Vec::new();
     }

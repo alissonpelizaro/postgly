@@ -93,7 +93,11 @@ pub async fn test_connectivity(base_url: &str, api_key: &str) -> AppResult<LlmCo
         return Err(AppError::Connection(format!(
             "HTTP {}: {}",
             status.as_u16(),
-            if snippet.is_empty() { "no body" } else { &snippet }
+            if snippet.is_empty() {
+                "no body"
+            } else {
+                &snippet
+            }
         )));
     }
 

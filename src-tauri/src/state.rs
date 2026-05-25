@@ -131,7 +131,10 @@ mod tests {
         let snap = state.nl_history_snapshot("s");
         assert_eq!(snap.len(), NL_HISTORY_CAP);
         // The newest 50 entries: e54 down to e5.
-        assert_eq!(snap.first().unwrap().instruction, format!("e{}", NL_HISTORY_CAP + 4));
+        assert_eq!(
+            snap.first().unwrap().instruction,
+            format!("e{}", NL_HISTORY_CAP + 4)
+        );
         assert_eq!(snap.last().unwrap().instruction, format!("e{}", 5));
     }
 

@@ -134,9 +134,7 @@ impl SessionTools {
             .tables
             .iter()
             .find(|t| t.schema == schema && t.name == name)
-            .ok_or_else(|| {
-                AppError::Other(format!("table not found: {schema}.{name}"))
-            })?;
+            .ok_or_else(|| AppError::Other(format!("table not found: {schema}.{name}")))?;
         Ok(json!({
             "schema": table.schema,
             "name": table.name,
@@ -165,7 +163,12 @@ impl SessionTools {
             .tables
             .iter()
             .find(|t| t.schema == schema && t.name == name)
-            .map(|t| t.foreign_keys.iter().map(|fk| serde_json::to_value(fk).unwrap()).collect())
+            .map(|t| {
+                t.foreign_keys
+                    .iter()
+                    .map(|fk| serde_json::to_value(fk).unwrap())
+                    .collect()
+            })
             .unwrap_or_default();
 
         let inbound: Vec<Value> = self
@@ -228,7 +231,10 @@ impl ToolExecutor for SessionTools {
     async fn execute(&self, name: &str, args: Value) -> AppResult<Value> {
         match name {
             "list_tables" => {
-                let schema = args.get("schema").and_then(Value::as_str).map(str::to_string);
+                let schema = args
+                    .get("schema")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
                 Ok(self.list_tables(schema.as_deref()))
             }
             "describe_table" => {
@@ -444,7 +450,12 @@ mod tests {
         let names: Vec<&str> = defs.iter().map(|d| d.function.name.as_str()).collect();
         assert_eq!(
             names,
-            vec!["list_tables", "describe_table", "list_relations", "sample_rows"]
+            vec![
+                "list_tables",
+                "describe_table",
+                "list_relations",
+                "sample_rows"
+            ]
         );
     }
 
@@ -538,10 +549,7 @@ mod tests {
     #[tokio::test]
     async fn sample_rows_clamps_limit_and_rejects_missing_tables() {
         let err = tools()
-            .execute(
-                "sample_rows",
-                json!({"schema": "public", "name": "ghost"}),
-            )
+            .execute("sample_rows", json!({"schema": "public", "name": "ghost"}))
             .await
             .unwrap_err();
         assert!(err.to_string().contains("table not found"));

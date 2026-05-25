@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://alissonpelizaro.github.io/postgly/sitemap.xml
