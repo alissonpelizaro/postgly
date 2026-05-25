@@ -408,7 +408,6 @@ interface ModelFieldProps {
  * user keeps a plain text input so configuration is never blocked.
  */
 function ModelField({ status, value, onChange }: ModelFieldProps) {
-  const { t } = useI18n();
   const [customMode, setCustomMode] = useState(false);
 
   const list = status.kind === "ok" ? status.list : [];

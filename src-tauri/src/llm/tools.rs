@@ -279,11 +279,7 @@ impl SessionTools {
         let result = self.session.execute(sql).await?;
         let total_rows = result.rows.len();
         let truncated = total_rows > RUN_SELECT_ROW_LIMIT;
-        let rows: Vec<_> = result
-            .rows
-            .into_iter()
-            .take(RUN_SELECT_ROW_LIMIT)
-            .collect();
+        let rows: Vec<_> = result.rows.into_iter().take(RUN_SELECT_ROW_LIMIT).collect();
         Ok(json!({
             "columns": result.columns,
             "rows": rows,
@@ -410,10 +406,7 @@ impl ToolExecutor for SessionTools {
                     .get("sql")
                     .and_then(Value::as_str)
                     .ok_or_else(|| AppError::Other("missing required `sql` argument".into()))?;
-                let summary = args
-                    .get("summary")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
+                let summary = args.get("summary").and_then(Value::as_str).unwrap_or("");
                 self.run_write(sql, summary).await
             }
             other => Err(AppError::Other(format!("unknown tool: {other}"))),
