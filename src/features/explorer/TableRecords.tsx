@@ -11,6 +11,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import { settingsApi } from "@/features/settings/api";
@@ -47,6 +48,7 @@ interface TableRecordsProps {
  * pagination, edit / insert / delete rows, or run free-form SQL.
  */
 export function TableRecords({ sessionId, table }: TableRecordsProps) {
+  const { t } = useI18n();
   const [mode, setMode] = useState<Mode>("filter");
   const [result, setResult] = useState<QueryResult | null>(null);
   const [columns, setColumns] = useState<string[]>([]);
@@ -262,7 +264,7 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
               onClick={() => setShowInsert(true)}
             >
               <Plus />
-              Novo registro
+              {t("explorer.newRecord")}
             </Button>
           )}
           <Button
@@ -272,7 +274,7 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
             onClick={() => setShowHistory(true)}
           >
             <History />
-            Histórico
+            {t("explorer.history")}
           </Button>
         </div>
 
@@ -296,7 +298,7 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
             <div className="flex items-center gap-2">
               <Button size="sm" onClick={runSql} disabled={loading}>
                 {loading ? <Loader2 className="animate-spin" /> : <Play />}
-                {selectedSql.trim() ? "Executar seleção" : "Executar"}
+                {selectedSql.trim() ? t("explorer.runSelection") : t("explorer.run")}
               </Button>
               <span className="text-xs text-muted-foreground">⌘/Ctrl + ↵</span>
             </div>
@@ -333,8 +335,8 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
 
       <footer className="flex items-center justify-between border-t border-border px-4 py-1.5 text-xs text-muted-foreground">
         <span>
-          {result ? `${rowCount} linha(s)` : "—"}
-          {mode === "filter" && ` · página ${page + 1}`}
+          {result ? t("common.rowsCount", { n: rowCount }) : "—"}
+          {mode === "filter" && ` · ${t("common.page", { n: page + 1 })}`}
         </span>
         {mode === "filter" && (
           <div className="flex items-center gap-1">
@@ -344,7 +346,7 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
               className="size-7"
               disabled={page === 0 || loading}
               onClick={() => goToPage(page - 1)}
-              aria-label="Página anterior"
+              aria-label={t("common.previousPage")}
             >
               <ChevronLeft />
             </Button>
@@ -354,7 +356,7 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
               className="size-7"
               disabled={!hasNextPage || loading}
               onClick={() => goToPage(page + 1)}
-              aria-label="Próxima página"
+              aria-label={t("common.nextPage")}
             >
               <ChevronRight />
             </Button>
@@ -387,9 +389,9 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
 
       {deleteIdx !== null && (
         <ConfirmDialog
-          title="Excluir registro"
-          description="O registro será removido permanentemente. Esta ação não pode ser desfeita."
-          confirmLabel="Excluir"
+          title={t("explorer.deleteRecord")}
+          description={t("explorer.deleteRecordDesc")}
+          confirmLabel={t("common.delete")}
           destructive
           onConfirm={confirmDelete}
           onCancel={() => setDeleteIdx(null)}
@@ -429,6 +431,7 @@ function ModeSwitch({
   mode: Mode;
   onChange: (mode: Mode) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="inline-flex rounded-md border border-border bg-card p-0.5">
       {(["filter", "sql"] as const).map((m) => (
@@ -443,7 +446,7 @@ function ModeSwitch({
               : "text-muted-foreground hover:text-foreground",
           )}
         >
-          {m === "filter" ? "Filtro" : "SQL"}
+          {m === "filter" ? t("explorer.filterMode") : t("explorer.sql")}
         </button>
       ))}
     </div>

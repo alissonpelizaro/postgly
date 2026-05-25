@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import { connectionsApi } from "./api";
@@ -39,6 +40,7 @@ export function ConnectionForm({
   editing,
   onSaved,
 }: ConnectionFormProps) {
+  const { t } = useI18n();
   const [form, setForm] = useState<ConnectionInput>(emptyConnectionInput);
   const [test, setTest] = useState<TestState>({ status: "idle" });
   const [saving, setSaving] = useState(false);
@@ -94,33 +96,32 @@ export function ConnectionForm({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {isEditing ? "Editar conexão" : "Nova conexão"}
+            {isEditing ? t("connections.form.editTitle") : t("connections.form.newTitle")}
           </DialogTitle>
           <DialogDescription>
-            Os dados ficam salvos localmente; a senha vai para o cofre do
-            sistema operacional.
+            {t("connections.form.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-3">
-          <Field label="Nome da conexão">
+          <Field label={t("connections.form.name")}>
             <Input
               value={form.name}
               onChange={(e) => update("name", e.target.value)}
-              placeholder="Produção, Local, ..."
+              placeholder={t("connections.form.namePlaceholder")}
               autoFocus
             />
           </Field>
 
           <div className="grid grid-cols-[1fr_120px] gap-3">
-            <Field label="Host">
+            <Field label={t("connections.form.host")}>
               <Input
                 value={form.host}
                 onChange={(e) => update("host", e.target.value)}
                 placeholder="localhost"
               />
             </Field>
-            <Field label="Porta">
+            <Field label={t("connections.form.port")}>
               <Input
                 type="number"
                 value={form.port}
@@ -129,7 +130,7 @@ export function ConnectionForm({
             </Field>
           </div>
 
-          <Field label="Database">
+          <Field label={t("connections.form.database")}>
             <Input
               value={form.database}
               onChange={(e) => update("database", e.target.value)}
@@ -138,24 +139,24 @@ export function ConnectionForm({
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Usuário">
+            <Field label={t("connections.form.user")}>
               <Input
                 value={form.user}
                 onChange={(e) => update("user", e.target.value)}
               />
             </Field>
-            <Field label="Senha">
+            <Field label={t("connections.form.password")}>
               <Input
                 type="password"
                 value={form.password}
                 onChange={(e) => update("password", e.target.value)}
-                placeholder={isEditing ? "•••••• (mantém a atual)" : ""}
+                placeholder={isEditing ? t("connections.form.passwordPlaceholder") : ""}
               />
             </Field>
           </div>
         </div>
 
-        <TestResult state={test} />
+        <TestResult state={test} okLabel={t("connections.form.testOk")} />
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <DialogFooter className="sm:justify-between">
@@ -168,11 +169,11 @@ export function ConnectionForm({
             {test.status === "testing" && (
               <Loader2 className="animate-spin" />
             )}
-            Testar conexão
+            {t("connections.form.test")}
           </Button>
           <Button type="button" onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="animate-spin" />}
-            {isEditing ? "Salvar alterações" : "Criar conexão"}
+            {isEditing ? t("common.saveChanges") : t("common.create")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -197,7 +198,7 @@ function Field({
 }
 
 /** Inline feedback for the "Test connection" button. */
-function TestResult({ state }: { state: TestState }) {
+function TestResult({ state, okLabel }: { state: TestState; okLabel: string }) {
   if (state.status === "idle" || state.status === "testing") return null;
 
   const ok = state.status === "ok";
@@ -216,7 +217,7 @@ function TestResult({ state }: { state: TestState }) {
         <XCircle className="mt-0.5 size-4 shrink-0" />
       )}
       <span className="break-words">
-        {ok ? "Conexão bem-sucedida." : state.message}
+        {ok ? okLabel : state.message}
       </span>
     </div>
   );

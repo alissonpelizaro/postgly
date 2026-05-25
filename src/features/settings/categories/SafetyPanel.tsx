@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, Loader2, Save, ShieldAlert } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Save, ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n";
 
 import { settingsApi } from "../api";
 import type { SafetyConfig, SettingsView } from "../types";
@@ -12,6 +13,7 @@ import type { SafetyConfig, SettingsView } from "../types";
  * slot in as additional rows.
  */
 export function SafetyPanel() {
+  const { t } = useI18n();
   const [view, setView] = useState<SettingsView | null>(null);
   const [draft, setDraft] = useState<SafetyConfig | null>(null);
   const [saving, setSaving] = useState(false);
@@ -64,9 +66,9 @@ export function SafetyPanel() {
           <ShieldAlert className="size-5" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold leading-tight">Segurança</h2>
+          <h2 className="text-lg font-semibold leading-tight">{t("settings.safety.title")}</h2>
           <p className="text-sm text-muted-foreground">
-            Guard-rails que pedem confirmação antes de operações arriscadas.
+            {t("settings.safety.subtitle")}
           </p>
         </div>
       </header>
@@ -81,25 +83,28 @@ export function SafetyPanel() {
       {draft === null ? (
         <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-5 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
-          Carregando…
+          {t("common.loading")}
         </div>
       ) : (
         <section className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
           <ToggleRow
-            title="Sempre confirmar operações destrutivas"
-            description="Pedir confirmação antes de executar INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER ou CREATE. Mostra a estimativa de linhas afetadas quando possível."
+            title={t("settings.safety.confirmDestructiveTitle")}
+            description={t("settings.safety.confirmDestructiveDesc")}
             checked={draft.confirm_destructive}
             onChange={(v) => update("confirm_destructive", v)}
           />
 
           {saved && !error && (
-            <p className="text-xs text-primary">Configuração salva.</p>
+            <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 p-3 text-sm text-primary">
+              <CheckCircle2 className="size-4" />
+              {t("settings.safety.saved")}
+            </div>
           )}
 
           <div className="flex items-center justify-end">
             <Button type="button" onClick={handleSave} disabled={!dirty || saving}>
               {saving ? <Loader2 className="animate-spin" /> : <Save />}
-              Salvar
+              {t("common.save")}
             </Button>
           </div>
         </section>

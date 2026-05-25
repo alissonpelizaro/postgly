@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Database, Loader2, Pencil, Plug, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import type { ConnectionMeta } from "./types";
@@ -23,6 +24,7 @@ export function ConnectionRow({
   onDelete,
   onConnect,
 }: ConnectionRowProps) {
+  const { t } = useI18n();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -57,7 +59,7 @@ export function ConnectionRow({
 
       {confirmingDelete ? (
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Excluir?</span>
+          <span className="text-xs text-muted-foreground">{t("connections.deleteConfirm")}</span>
           <Button
             size="sm"
             variant="destructive"
@@ -66,7 +68,7 @@ export function ConnectionRow({
             disabled={deleting}
           >
             {deleting && <Loader2 className="animate-spin" />}
-            Sim
+            {t("common.yes")}
           </Button>
           <Button
             size="sm"
@@ -75,7 +77,7 @@ export function ConnectionRow({
             onClick={() => setConfirmingDelete(false)}
             disabled={deleting}
           >
-            Não
+            {t("common.no")}
           </Button>
         </div>
       ) : (
@@ -93,8 +95,8 @@ export function ConnectionRow({
             size="icon"
             variant="ghost"
             className="size-8 shrink-0"
-            title="Editar"
-            aria-label="Editar conexão"
+            title={t("common.edit")}
+            aria-label={t("connections.editAria")}
             onClick={() => onEdit(connection)}
           >
             <Pencil />
@@ -103,8 +105,8 @@ export function ConnectionRow({
             size="icon"
             variant="ghost"
             className="size-8 shrink-0 text-destructive hover:text-destructive"
-            title="Excluir"
-            aria-label="Excluir conexão"
+            title={t("common.delete")}
+            aria-label={t("connections.deleteAria")}
             onClick={() => setConfirmingDelete(true)}
           >
             <Trash2 />
@@ -112,11 +114,11 @@ export function ConnectionRow({
           <Button
             size="sm"
             className="h-8 shrink-0"
-            title="Conectar"
+            title={t("connections.connect")}
             onClick={() => onConnect(connection)}
           >
             <Plug />
-            Conectar
+            {t("connections.connect")}
           </Button>
         </div>
       )}

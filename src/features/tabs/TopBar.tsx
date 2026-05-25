@@ -1,12 +1,18 @@
-import { Database, LayoutGrid, Menu, Settings as SettingsIcon, X } from "lucide-react";
+import { useState } from "react";
+import { ArrowUpCircle, Database, Info, LayoutGrid, Menu, Settings as SettingsIcon, X } from "lucide-react";
 
+// import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AboutDialog } from "@/features/about/AboutDialog";
+import { useVersionCheck } from "@/features/about/use-version-check";
+import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import type { WorkspaceTab } from "./types";
@@ -33,9 +39,17 @@ export function TopBar({
   onClose,
   onOpenSettings,
 }: TopBarProps) {
+  const version = useVersionCheck();
+  const { t } = useI18n();
+  const [aboutOpen, setAboutOpen] = useState(false);
+
   return (
     <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-sidebar px-2">
-      <HomeButton active={activeId === null} onClick={() => onSelect(null)} />
+      <HomeButton
+        active={activeId === null}
+        label={t("topbar.connections")}
+        onClick={() => onSelect(null)}
+      />
 
       {tabs.length > 0 && <div className="mx-1 h-4 w-px bg-border" />}
 
@@ -51,14 +65,66 @@ export function TopBar({
         ))}
       </div>
 
+      {version.updateAvailable && (
+        <UpdateBadge
+          latest={version.latest!}
+          label={t("topbar.updateAvailable")}
+          titleText={t("topbar.updateTitle", { v: version.latest! })}
+          onClick={() => setAboutOpen(true)}
+        />
+      )}
+      {/* <LanguageSwitcher compact /> */}
       <ThemeToggle />
-      <AppMenu onOpenSettings={onOpenSettings} />
+      <AppMenu
+        onOpenSettings={onOpenSettings}
+        onOpenAbout={() => setAboutOpen(true)}
+        settingsLabel={t("topbar.settings")}
+        aboutLabel={t("topbar.about")}
+        menuLabel={t("topbar.menu")}
+      />
+
+      <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} version={version} />
     </div>
   );
 }
 
+/** "New version available" pill — only rendered when an update exists. */
+function UpdateBadge({
+  label,
+  titleText,
+  onClick,
+}: {
+  latest: string;
+  label: string;
+  titleText: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={titleText}
+      className={cn(
+        "flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors",
+        "border border-primary/40 bg-primary/10 text-primary hover:bg-primary/15",
+      )}
+    >
+      <ArrowUpCircle className="size-3.5" />
+      {label}
+    </button>
+  );
+}
+
 /** The home / connection-manager button. */
-function HomeButton({ active, onClick }: { active: boolean; onClick: () => void }) {
+function HomeButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
@@ -71,7 +137,7 @@ function HomeButton({ active, onClick }: { active: boolean; onClick: () => void 
       )}
     >
       <LayoutGrid className="size-3.5" />
-      Conexões
+      {label}
     </button>
   );
 }
@@ -117,14 +183,24 @@ function ConnectionTab({ tab, active, onSelect, onClose }: ConnectionTabProps) {
 
 interface AppMenuProps {
   onOpenSettings: () => void;
+  onOpenAbout: () => void;
+  settingsLabel: string;
+  aboutLabel: string;
+  menuLabel: string;
 }
 
 /** Header dropdown with app-wide actions. */
-function AppMenu({ onOpenSettings }: AppMenuProps) {
+function AppMenu({
+  onOpenSettings,
+  onOpenAbout,
+  settingsLabel,
+  aboutLabel,
+  menuLabel,
+}: AppMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        aria-label="Menu"
+        aria-label={menuLabel}
         className="ml-1 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
       >
         <Menu className="size-4" />
@@ -132,7 +208,12 @@ function AppMenu({ onOpenSettings }: AppMenuProps) {
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={onOpenSettings}>
           <SettingsIcon className="size-4" />
-          Configurações
+          {settingsLabel}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onOpenAbout}>
+          <Info className="size-4" />
+          {aboutLabel}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

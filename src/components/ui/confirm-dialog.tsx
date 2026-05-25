@@ -10,11 +10,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useI18n } from "@/i18n";
 
 interface ConfirmDialogProps {
   title: string;
   description: string;
-  /** Label for the confirm button. Defaults to "Confirmar". */
+  /** Label for the confirm button. Defaults to the localized "Confirm". */
   confirmLabel?: string;
   /** Style the confirm button as a destructive action. */
   destructive?: boolean;
@@ -27,11 +28,12 @@ interface ConfirmDialogProps {
 export function ConfirmDialog({
   title,
   description,
-  confirmLabel = "Confirmar",
+  confirmLabel,
   destructive = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +65,7 @@ export function ConfirmDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={onCancel} disabled={busy}>
-            Cancelar
+            {t("common.cancel")}
           </Button>
           <Button
             variant={destructive ? "destructive" : "default"}
@@ -71,7 +73,7 @@ export function ConfirmDialog({
             disabled={busy}
           >
             {busy && <Loader2 className="animate-spin" />}
-            {confirmLabel}
+            {confirmLabel ?? t("common.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>

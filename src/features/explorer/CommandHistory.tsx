@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useI18n } from "@/i18n";
 
 import { explorerApi } from "./api";
 
@@ -27,6 +28,7 @@ export function CommandHistory({
   onPick,
   onClose,
 }: CommandHistoryProps) {
+  const { t } = useI18n();
   const [history, setHistory] = useState<string[] | null>(null);
 
   useEffect(() => {
@@ -42,10 +44,10 @@ export function CommandHistory({
         <DialogHeader className="border-b border-border px-5 py-4">
           <DialogTitle className="flex items-center gap-2">
             <History className="size-4" />
-            Histórico da sessão
+            {t("explorer.sessionHistory")}
           </DialogTitle>
           <DialogDescription>
-            Comandos executados nesta conexão. Clique para reutilizar.
+            {t("explorer.sessionHistoryDesc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -56,7 +58,7 @@ export function CommandHistory({
             </div>
           ) : history.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
-              Nenhum comando executado ainda.
+              {t("explorer.noCommandsYet")}
             </p>
           ) : (
             <ul className="divide-y divide-border">
