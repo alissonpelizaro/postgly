@@ -28,21 +28,18 @@ sqlx = { version = "0.8", default-features = false, features = [
     "tls-rustls",
     "postgres",
 ] }
-keyring = { version = "3", features = [
-    "apple-native",
-    "windows-native",
-    "sync-secret-service",
-    "crypto-rust",
-] }
+aes-gcm-siv = "0.11"
+base64 = "0.22"
+rand = "0.8"
+sha2 = "0.10"
 reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "rustls-tls",
 ] }
 
 [features]
-# Swap the OS keyring for an in-memory store so tests don't touch the
-# host's real Keychain / Credential Manager / Secret Service. Enabled by
-# the CI test pipeline; never enabled in release builds.
+# Keep secrets in an in-memory mock vault during tests. Enabled by the
+# CI test pipeline; never enabled in release builds.
 mock-keyring = []
 
 [dev-dependencies]

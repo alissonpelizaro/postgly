@@ -24,13 +24,13 @@ pub struct ConnectionInput {
 
 impl ConnectionInput {
     /// Resolve the effective password: the typed one, or — when editing
-    /// without retyping — the password already in the keyring.
-    fn resolve_password(&self) -> AppResult<String> {
+    /// without retyping — the password already in the encrypted vault.
+    fn resolve_password<R: tauri::Runtime>(&self, app: &tauri::AppHandle<R>) -> AppResult<String> {
         if !self.password.is_empty() {
             return Ok(self.password.clone());
         }
         match &self.id {
-            Some(id) => connections::get_password(id),
+            Some(id) => connections::get_password(app, id),
             None => Err(AppError::Connection("password is required".into())),
         }
     }
@@ -59,7 +59,7 @@ pub fn list_connections<R: tauri::Runtime>(
 
 /// Create a new connection or update an existing one.
 ///
-/// The password goes to the OS keyring; the rest to the JSON store. On
+/// The password goes to encrypted `vault.json`; the rest to the JSON store. On
 /// update, an empty password leaves the stored secret untouched.
 #[tauri::command]
 pub fn save_connection<R: tauri::Runtime>(
@@ -74,7 +74,7 @@ pub fn save_connection<R: tauri::Runtime>(
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
     if !input.password.is_empty() {
-        connections::set_password(&id, &input.password)?;
+        connections::set_password(&app, &id, &input.password)?;
     } else if is_new {
         return Err(AppError::Other("password is required".into()));
     }
@@ -97,20 +97,23 @@ pub fn save_connection<R: tauri::Runtime>(
     Ok(meta)
 }
 
-/// Delete a connection: drop its metadata and its keyring password.
+/// Delete a connection: drop its metadata and its stored password.
 #[tauri::command]
 pub fn delete_connection<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> AppResult<()> {
     let mut items = connections::load_all(&app)?;
     items.retain(|c| c.id != id);
     connections::save_all(&app, &items)?;
-    connections::delete_password(&id)
+    connections::delete_password(&app, &id)
 }
 
 /// Open a transient connection, ping it and close it — the "Test
 /// connection" button. Never persists anything.
 #[tauri::command]
-pub async fn test_connection(input: ConnectionInput) -> AppResult<()> {
-    let password = input.resolve_password()?;
+pub async fn test_connection<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: ConnectionInput,
+) -> AppResult<()> {
+    let password = input.resolve_password(&app)?;
     let config = input.into_config(password);
 
     let mut driver = db::make_driver(config.kind);
@@ -183,26 +186,29 @@ mod tests {
     #[test]
     fn resolve_password_returns_typed_value_when_present() {
         let input = fresh_input("typed");
-        assert_eq!(input.resolve_password().unwrap(), "typed");
+        let app = mock_app_with_state();
+        assert_eq!(input.resolve_password(app.handle()).unwrap(), "typed");
     }
 
     #[test]
     fn resolve_password_requires_a_value_for_new_connections() {
         let input = fresh_input("");
-        let err = input.resolve_password().unwrap_err();
+        let app = mock_app_with_state();
+        let err = input.resolve_password(app.handle()).unwrap_err();
         assert!(err.to_string().contains("password is required"));
     }
 
     #[cfg(feature = "mock-keyring")]
     #[test]
-    fn resolve_password_falls_back_to_keyring_when_editing() {
+    fn resolve_password_falls_back_to_saved_secret_when_editing() {
         crate::connections::reset_mock_keyring();
-        crate::connections::set_password("existing", "stored").unwrap();
+        let app = mock_app_with_state();
+        crate::connections::set_password(app.handle(), "existing", "stored").unwrap();
         let input = ConnectionInput {
             id: Some("existing".into()),
             ..fresh_input("")
         };
-        assert_eq!(input.resolve_password().unwrap(), "stored");
+        assert_eq!(input.resolve_password(app.handle()).unwrap(), "stored");
     }
 
     #[test]
@@ -219,7 +225,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_connection_propagates_password_validation_error() {
-        let err = test_connection(fresh_input("")).await.unwrap_err();
+        let app = mock_app_with_state();
+        let err = test_connection(app.handle().clone(), fresh_input(""))
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("password is required"));
     }
 
@@ -233,7 +242,10 @@ mod tests {
             port: 1, // reserved
             ..fresh_input("pw")
         };
-        let err = test_connection(input).await.unwrap_err();
+        let app = mock_app_with_state();
+        let err = test_connection(app.handle().clone(), input)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AppError::Connection(_)));
     }
 
@@ -265,8 +277,11 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].id, meta.id);
 
-        // Password landed in the keyring.
-        assert_eq!(connections::get_password(&meta.id).unwrap(), "hunter2");
+        // Password landed in the mock vault.
+        assert_eq!(
+            connections::get_password(app.handle(), &meta.id).unwrap(),
+            "hunter2"
+        );
     }
 
     #[cfg(feature = "mock-keyring")]
@@ -287,7 +302,10 @@ mod tests {
         let items = list_connections(app.handle().clone()).unwrap();
         assert_eq!(items.len(), 1, "update must not duplicate");
         assert_eq!(items[0].name, "Renamed");
-        assert_eq!(connections::get_password(&original.id).unwrap(), "pw2");
+        assert_eq!(
+            connections::get_password(app.handle(), &original.id).unwrap(),
+            "pw2"
+        );
     }
 
     #[cfg(feature = "mock-keyring")]
@@ -303,7 +321,10 @@ mod tests {
         update.name = "Updated".into();
         let meta = save_connection(app.handle().clone(), update).unwrap();
         assert_eq!(meta.name, "Updated");
-        assert_eq!(connections::get_password(&original.id).unwrap(), "kept");
+        assert_eq!(
+            connections::get_password(app.handle(), &original.id).unwrap(),
+            "kept"
+        );
     }
 
     #[cfg(feature = "mock-keyring")]
@@ -327,7 +348,7 @@ mod tests {
         delete_connection(app.handle().clone(), meta.id.clone()).unwrap();
         let items = list_connections(app.handle().clone()).unwrap();
         assert!(items.is_empty());
-        assert!(connections::get_password(&meta.id).is_err());
+        assert!(connections::get_password(app.handle(), &meta.id).is_err());
 
         // Deleting a missing connection is still idempotent.
         delete_connection(app.handle().clone(), meta.id).unwrap();

@@ -43,7 +43,7 @@ pub async fn generate_sql<R: tauri::Runtime>(
             "LLM is not configured — set base URL and model in Settings.".into(),
         ));
     }
-    let api_key = settings::get_secret(LLM_API_KEY_ACCOUNT)?;
+    let api_key = settings::get_secret(&app, LLM_API_KEY_ACCOUNT)?;
     if api_key.trim().is_empty() {
         return Err(AppError::Other(
             "LLM API key is not configured — set it in Settings.".into(),
@@ -183,7 +183,7 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
             "LLM is not configured — set base URL and model in Settings.".into(),
         ));
     }
-    let api_key = settings::get_secret(LLM_API_KEY_ACCOUNT)?;
+    let api_key = settings::get_secret(&app, LLM_API_KEY_ACCOUNT)?;
     if api_key.trim().is_empty() {
         return Err(AppError::Other(
             "LLM API key is not configured — set it in Settings.".into(),
@@ -360,7 +360,7 @@ pub async fn agent_generate_title<R: tauri::Runtime>(
     if cfg.base_url.trim().is_empty() || cfg.model.trim().is_empty() {
         return Err(AppError::Other("LLM is not configured.".into()));
     }
-    let api_key = settings::get_secret(LLM_API_KEY_ACCOUNT)?;
+    let api_key = settings::get_secret(&app, LLM_API_KEY_ACCOUNT)?;
     if api_key.trim().is_empty() {
         return Err(AppError::Other("LLM API key is not configured.".into()));
     }
@@ -679,7 +679,7 @@ mod tests {
         let server = MockServer::start().await; // unused but ensures base url is well-formed
         write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "key").await;
         // Wipe the key after saving (simulates the user clearing it).
-        settings::set_secret(LLM_API_KEY_ACCOUNT, "").unwrap();
+        settings::set_secret(app.handle(), LLM_API_KEY_ACCOUNT, "").unwrap();
 
         let err = generate_sql(
             app.handle().clone(),
