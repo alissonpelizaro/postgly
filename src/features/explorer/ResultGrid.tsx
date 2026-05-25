@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, CheckCircle2, Trash2 } from "lucide-react";
 
+import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import type { OrderBy, QueryResult } from "./types";
@@ -26,6 +27,7 @@ export function ResultGrid({
   onRowOpen,
   onRowDelete,
 }: ResultGridProps) {
+  const { t } = useI18n();
   // Right-click row menu: viewport coords plus the targeted row index.
   const [menu, setMenu] = useState<{
     x: number;
@@ -48,9 +50,9 @@ export function ResultGrid({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
         <CheckCircle2 className="size-6 text-emerald-500" />
-        <p className="text-sm font-medium">Comando executado</p>
+        <p className="text-sm font-medium">{t("explorer.commandExecuted")}</p>
         <p className="text-sm text-muted-foreground">
-          {result.rows_affected} linha(s) afetada(s).
+          {t("common.rowsAffected", { n: result.rows_affected })}
         </p>
       </div>
     );
@@ -131,7 +133,7 @@ export function ResultGrid({
 
         {result.rows.length === 0 && (
           <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-            Nenhuma linha retornada.
+            {t("explorer.noRows")}
           </p>
         )}
       </div>
@@ -150,7 +152,7 @@ export function ResultGrid({
             className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
           >
             <Trash2 className="size-4" />
-            Excluir registro
+            {t("explorer.deleteRecord")}
           </button>
         </div>
       )}

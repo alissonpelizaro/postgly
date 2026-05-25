@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { localeFor, useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import type { StatementAnalysis, StatementInfo, StatementKind } from "./types";
@@ -32,7 +33,7 @@ const KIND_LABEL: Record<StatementKind, string> = {
   truncate: "TRUNCATE",
   alter: "ALTER",
   create: "CREATE",
-  other: "Outro",
+  other: "OTHER",
 };
 
 /**
@@ -48,6 +49,7 @@ export function DestructiveConfirmDialog({
   onCancel,
   onConfirm,
 }: DestructiveConfirmDialogProps) {
+  const { t, lang } = useI18n();
   const destructive = analysis?.statements.filter((s) =>
     isDestructiveKind(s.kind),
   ) ?? [];
@@ -58,17 +60,17 @@ export function DestructiveConfirmDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldAlert className="size-5 text-amber-600 dark:text-amber-400" />
-            Confirmar operação destrutiva
+            {t("explorer.destructive.title")}
           </DialogTitle>
           <DialogDescription>
-            Esta query altera dados. Revise antes de executar.
+            {t("explorer.destructive.desc")}
           </DialogDescription>
         </DialogHeader>
 
         {analysis === null ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
-            Analisando…
+            {t("explorer.destructive.analyzing")}
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -76,31 +78,34 @@ export function DestructiveConfirmDialog({
               <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                 <div>
-                  <p className="font-medium">UPDATE / DELETE sem WHERE</p>
-                  <p className="opacity-90">
-                    A operação afeta <strong>todas as linhas</strong> da tabela.
-                  </p>
+                  <p className="font-medium">{t("explorer.destructive.unboundedTitle")}</p>
+                  <p className="opacity-90">{t("explorer.destructive.unboundedDesc")}</p>
                 </div>
               </div>
             )}
 
             {analysis.estimated_rows !== null && (
-              <RowEstimate rows={analysis.estimated_rows} />
+              <RowEstimate rows={analysis.estimated_rows} locale={localeFor(lang)} byPlanner={t("explorer.destructive.rowsByPlanner")} />
             )}
 
             {analysis.explain_error && (
               <p className="text-xs text-muted-foreground">
-                Estimativa indisponível: {analysis.explain_error}
+                {t("explorer.destructive.estimateMissing", { error: analysis.explain_error })}
               </p>
             )}
 
             <div className="flex flex-col gap-1.5">
               <p className="text-xs font-medium uppercase text-muted-foreground">
-                Statements afetados
+                {t("explorer.destructive.affectedStatements")}
               </p>
               <ul className="flex flex-col gap-1.5">
                 {destructive.map((stmt, idx) => (
-                  <StatementRow key={idx} stmt={stmt} />
+                  <StatementRow
+                    key={idx}
+                    stmt={stmt}
+                    withWhereLabel={t("explorer.destructive.withWhere")}
+                    withoutWhereLabel={t("explorer.destructive.withoutWhere")}
+                  />
                 ))}
               </ul>
             </div>
@@ -109,7 +114,7 @@ export function DestructiveConfirmDialog({
 
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onCancel} disabled={running}>
-            Cancelar
+            {t("common.cancel")}
           </Button>
           <Button
             type="button"
@@ -118,7 +123,7 @@ export function DestructiveConfirmDialog({
             disabled={running || analysis === null}
           >
             {running ? <Loader2 className="animate-spin" /> : null}
-            Executar mesmo assim
+            {t("explorer.destructive.runAnyway")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -126,7 +131,15 @@ export function DestructiveConfirmDialog({
   );
 }
 
-function StatementRow({ stmt }: { stmt: StatementInfo }) {
+function StatementRow({
+  stmt,
+  withWhereLabel,
+  withoutWhereLabel,
+}: {
+  stmt: StatementInfo;
+  withWhereLabel: string;
+  withoutWhereLabel: string;
+}) {
   const danger = (stmt.kind === "update" || stmt.kind === "delete") && !stmt.has_where;
   return (
     <li
@@ -153,7 +166,7 @@ function StatementRow({ stmt }: { stmt: StatementInfo }) {
               danger ? "text-destructive" : "text-muted-foreground",
             )}
           >
-            {stmt.has_where ? "com WHERE" : "sem WHERE"}
+            {stmt.has_where ? withWhereLabel : withoutWhereLabel}
           </span>
         )}
       </div>
@@ -164,13 +177,13 @@ function StatementRow({ stmt }: { stmt: StatementInfo }) {
   );
 }
 
-function RowEstimate({ rows }: { rows: number }) {
+function RowEstimate({ rows, locale, byPlanner }: { rows: number; locale: string; byPlanner: string }) {
   const rounded = Math.round(rows);
-  const formatted = new Intl.NumberFormat("pt-BR").format(rounded);
+  const formatted = new Intl.NumberFormat(locale).format(rounded);
   return (
     <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
       <span className="font-medium">~{formatted}</span>
-      <span>linha(s) afetada(s), segundo o planner</span>
+      <span>{byPlanner}</span>
     </div>
   );
 }

@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   AlertCircle,
   CheckCircle2,
   Eraser,
   Loader2,
+  RefreshCw,
   Save,
   Sparkles,
   Zap,
@@ -12,6 +13,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useI18n } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 import { settingsApi } from "../api";
 import type { LlmConfigInput, SettingsView } from "../types";
@@ -49,15 +52,19 @@ type TestStatus =
   | { kind: "ok"; models: string[] }
   | { kind: "error"; message: string };
 
-/** Sentinel placeholder so the user knows a key is already stored. */
-const STORED_KEY_PLACEHOLDER = "•••••• (mantém a chave salva)";
+type ModelsStatus =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "ok"; list: string[] }
+  | { kind: "error"; message: string };
 
 /**
- * LLM Config form. Wraps the [`settingsApi`] CRUD plus a "Testar
- * conexão" probe that hits `{base_url}/models` before letting the user
- * save with confidence.
+ * LLM Config form. Wraps the [`settingsApi`] CRUD plus a "Test
+ * connection" probe that hits `{base_url}/models` before letting the
+ * user save with confidence.
  */
 export function LlmConfigPanel() {
+  const { t } = useI18n();
   const [view, setView] = useState<SettingsView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -70,9 +77,14 @@ export function LlmConfigPanel() {
   });
 
   const [test, setTest] = useState<TestStatus>({ kind: "idle" });
+  const [models, setModels] = useState<ModelsStatus>({ kind: "idle" });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  // Latest-request guard for the model autoload — prevents stale responses
+  // from a slow request from overwriting a newer one.
+  const modelsReqId = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,6 +129,45 @@ export function LlmConfigPanel() {
     setTest({ kind: "idle" });
     setSaved(false);
   };
+
+  const refreshModels = async () => {
+    const id = ++modelsReqId.current;
+    setModels({ kind: "loading" });
+    try {
+      const result = await settingsApi.testLlm(form);
+      if (id !== modelsReqId.current) return;
+      setModels({ kind: "ok", list: result.models });
+    } catch (err) {
+      if (id !== modelsReqId.current) return;
+      setModels({ kind: "error", message: String(err) });
+    }
+  };
+
+  // Auto-fetch the model list whenever the endpoint/credentials change.
+  // Debounced so typing the API key or URL doesn't fire a request per keystroke.
+  useEffect(() => {
+    if (!view) return;
+    const baseUrl = form.base_url.trim();
+    const hasKey = form.api_key.trim().length > 0 || (view.llm_api_key_configured ?? false);
+    if (!baseUrl || !hasKey) {
+      setModels({ kind: "idle" });
+      return;
+    }
+    const id = ++modelsReqId.current;
+    const timer = setTimeout(async () => {
+      setModels({ kind: "loading" });
+      try {
+        const result = await settingsApi.testLlm(form);
+        if (id !== modelsReqId.current) return;
+        setModels({ kind: "ok", list: result.models });
+      } catch (err) {
+        if (id !== modelsReqId.current) return;
+        setModels({ kind: "error", message: String(err) });
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, form.base_url, form.api_key, form.provider]);
 
   const handleTest = async () => {
     setTest({ kind: "running" });
@@ -179,10 +230,9 @@ export function LlmConfigPanel() {
           <Sparkles className="size-5" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold leading-tight">LLM Config</h2>
+          <h2 className="text-lg font-semibold leading-tight">{t("settings.llm.title")}</h2>
           <p className="text-sm text-muted-foreground">
-            Configure um provedor compatível com OpenAI para gerar queries SQL
-            a partir de linguagem natural.
+            {t("settings.llm.subtitle")}
           </p>
         </div>
       </header>
@@ -199,7 +249,7 @@ export function LlmConfigPanel() {
         className="flex flex-col gap-5 rounded-lg border border-border bg-card p-5"
       >
         <div className="grid gap-2">
-          <Label htmlFor="llm-provider">Provedor</Label>
+          <Label htmlFor="llm-provider">{t("settings.llm.provider")}</Label>
           <select
             id="llm-provider"
             value={form.provider}
@@ -215,7 +265,7 @@ export function LlmConfigPanel() {
         </div>
 
         <div className="grid gap-2">
-          <Label htmlFor="llm-base-url">Base URL</Label>
+          <Label htmlFor="llm-base-url">{t("settings.llm.baseUrl")}</Label>
           <Input
             id="llm-base-url"
             type="url"
@@ -228,46 +278,69 @@ export function LlmConfigPanel() {
         </div>
 
         <div className="grid gap-2">
-          <Label htmlFor="llm-api-key">API key</Label>
+          <Label htmlFor="llm-api-key">{t("settings.llm.apiKey")}</Label>
           <Input
             id="llm-api-key"
             type="password"
             autoComplete="off"
-            placeholder={keyConfigured ? STORED_KEY_PLACEHOLDER : "sk-..."}
+            placeholder={keyConfigured ? t("settings.llm.apiKeyStoredPlaceholder") : "sk-..."}
             value={form.api_key}
             onChange={(e) => update("api_key", e.target.value)}
           />
           {keyConfigured && (
             <p className="text-xs text-muted-foreground">
-              Já existe uma chave salva no keyring. Deixe em branco para mantê-la.
+              {t("settings.llm.apiKeyStored")}
             </p>
           )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
           <div className="grid gap-2">
-            <Label htmlFor="llm-model">Modelo</Label>
-            <Input
-              id="llm-model"
-              placeholder="gpt-4o-mini"
+            <div className="flex items-center justify-between">
+              <Label htmlFor="llm-model">{t("settings.llm.model")}</Label>
+              <button
+                type="button"
+                onClick={refreshModels}
+                disabled={models.kind === "loading"}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                title={t("settings.llm.reloadTitle")}
+              >
+                <RefreshCw
+                  className={cn(
+                    "size-3",
+                    models.kind === "loading" && "animate-spin",
+                  )}
+                />
+                {t("settings.llm.reload")}
+              </button>
+            </div>
+            <ModelField
+              status={models}
               value={form.model}
-              onChange={(e) => update("model", e.target.value)}
-              required
+              onChange={(v) => update("model", v)}
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="llm-temperature">Temperature</Label>
-            <Input
+            <div className="flex items-center justify-between">
+              <Label htmlFor="llm-temperature">{t("settings.llm.temperature")}</Label>
+              <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                {form.temperature.toFixed(1)}
+              </span>
+            </div>
+            <input
               id="llm-temperature"
-              type="number"
+              type="range"
               min={0}
               max={2}
               step={0.1}
               value={form.temperature}
-              onChange={(e) =>
-                update("temperature", Number(e.target.value) || 0)
-              }
+              onChange={(e) => update("temperature", Number(e.target.value))}
+              className="range-slider h-9 w-full accent-primary"
             />
+            <div className="flex justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
+              <span>{t("settings.llm.precise")}</span>
+              <span>{t("settings.llm.creative")}</span>
+            </div>
           </div>
         </div>
 
@@ -283,7 +356,7 @@ export function LlmConfigPanel() {
         {saved && test.kind !== "error" && (
           <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 p-3 text-sm text-primary">
             <CheckCircle2 className="size-4" />
-            Configuração salva.
+            {t("settings.llm.saved")}
           </div>
         )}
 
@@ -296,7 +369,7 @@ export function LlmConfigPanel() {
               disabled={saving}
             >
               <Eraser />
-              Remover chave
+              {t("settings.llm.removeKey")}
             </Button>
           )}
           <Button
@@ -310,14 +383,115 @@ export function LlmConfigPanel() {
             ) : (
               <Zap />
             )}
-            Testar conexão
+            {t("settings.llm.test")}
           </Button>
           <Button type="submit" disabled={!canSave}>
             {saving ? <Loader2 className="animate-spin" /> : <Save />}
-            Salvar
+            {t("common.save")}
           </Button>
         </div>
       </form>
+    </div>
+  );
+}
+
+interface ModelFieldProps {
+  status: ModelsStatus;
+  value: string;
+  onChange: (value: string) => void;
+}
+
+/**
+ * Model picker. Renders a dropdown populated from `/models` when the
+ * endpoint replied, with a "Custom…" option that falls back to a free-text
+ * input for unlisted models. While the list is loading or unreachable, the
+ * user keeps a plain text input so configuration is never blocked.
+ */
+function ModelField({ status, value, onChange }: ModelFieldProps) {
+  const { t } = useI18n();
+  const [customMode, setCustomMode] = useState(false);
+
+  const list = status.kind === "ok" ? status.list : [];
+  const valueInList = value !== "" && list.includes(value);
+  // When the saved value isn't in the fetched list, show it as a separate
+  // option (and surface a hint) so the user understands why.
+  const showSavedOption = !customMode && value !== "" && list.length > 0 && !valueInList;
+
+  if (status.kind === "loading" && list.length === 0) {
+    return (
+      <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" />
+        Carregando modelos…
+      </div>
+    );
+  }
+
+  if (list.length === 0 || customMode) {
+    return (
+      <div className="flex flex-col gap-1">
+        <Input
+          id="llm-model"
+          placeholder="gpt-4o-mini"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required
+        />
+        {status.kind === "error" && !customMode && (
+          <p className="text-xs text-destructive">
+            Não foi possível carregar a lista — informe o modelo manualmente.
+          </p>
+        )}
+        {list.length > 0 && customMode && (
+          <button
+            type="button"
+            onClick={() => setCustomMode(false)}
+            className="self-start text-xs text-muted-foreground hover:text-foreground"
+          >
+            ← Voltar para a lista
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <select
+        id="llm-model"
+        value={valueInList ? value : ""}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === "__custom__") {
+            setCustomMode(true);
+            return;
+          }
+          onChange(v);
+        }}
+        className={cn(
+          "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        )}
+        required
+      >
+        {!valueInList && (
+          <option value="" disabled>
+            {value ? `${value} (não listado)` : "Selecione um modelo…"}
+          </option>
+        )}
+        {showSavedOption && (
+          <option value={value}>{value} (atual)</option>
+        )}
+        {list.map((m) => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
+        <option value="__custom__">Outro… (digitar manualmente)</option>
+      </select>
+      <p className="text-xs text-muted-foreground">
+        {list.length} modelo(s) disponíveis
+        {showSavedOption && " · valor salvo não está na lista atual"}
+      </p>
     </div>
   );
 }

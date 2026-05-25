@@ -82,9 +82,20 @@ export const explorerApi = {
   queryHistory: (sessionId: string) =>
     invoke<string[]>("query_history", { sessionId }),
 
-  /** Turn a natural-language instruction into SQL via the configured LLM. */
-  generateSql: (sessionId: string, instruction: string) =>
-    invoke<AgentOutput>("generate_sql", { sessionId, instruction }),
+  /** Turn a natural-language instruction into SQL via the configured LLM.
+   *  `overrides` lets the caller pick a different model/temperature for
+   *  this single call without touching the saved settings. */
+  generateSql: (
+    sessionId: string,
+    instruction: string,
+    overrides?: { model?: string; temperature?: number },
+  ) =>
+    invoke<AgentOutput>("generate_sql", {
+      sessionId,
+      instruction,
+      modelOverride: overrides?.model ?? null,
+      temperatureOverride: overrides?.temperature ?? null,
+    }),
 
   /** Snapshot the session's NL → SQL history, newest first. */
   nlQueryHistory: (sessionId: string) =>

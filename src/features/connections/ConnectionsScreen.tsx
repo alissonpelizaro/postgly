@@ -1,13 +1,15 @@
-import { useState } from "react";
-import { AlertCircle, Database, Loader2, Plus } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertCircle, Database, Loader2, Plus, Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import logoUrl from "@/assets/postgly-logo.png";
+import { useI18n } from "@/i18n";
 
 import { connectionsApi } from "./api";
 import { ConnectionForm } from "./ConnectionForm";
@@ -25,9 +27,19 @@ interface ConnectionsScreenProps {
  * connection list with its management controls on the right.
  */
 export function ConnectionsScreen({ onConnect }: ConnectionsScreenProps) {
+  const { t } = useI18n();
   const { connections, loading, error, refresh } = useConnections();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ConnectionMeta | null>(null);
+  const [query, setQuery] = useState("");
+
+  const trimmedQuery = query.trim().toLowerCase();
+  const filteredConnections = useMemo(() => {
+    if (!trimmedQuery) return connections;
+    return connections.filter((c) =>
+      c.name.toLowerCase().includes(trimmedQuery),
+    );
+  }, [connections, trimmedQuery]);
 
   const openCreate = () => {
     setEditing(null);
@@ -53,21 +65,50 @@ export function ConnectionsScreen({ onConnect }: ConnectionsScreenProps) {
         <ResizableHandle withHandle />
         <ResizablePanel defaultSize={42} minSize={30}>
           <section className="flex h-full w-full flex-col bg-background">
-            <header className="flex items-center justify-between border-b border-border px-5 py-3">
-              <div>
-                <h1 className="text-base font-semibold leading-tight">
-                  Conexões
-                </h1>
-                <p className="text-xs text-muted-foreground">
-                  {connections.length === 0
-                    ? "Nenhuma conexão salva"
-                    : `${connections.length} conexão(ões) salva(s)`}
-                </p>
+            <header className="flex flex-col gap-3 border-b border-border px-5 py-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-base font-semibold leading-tight">
+                    {t("connections.title")}
+                  </h1>
+                  <p className="text-xs text-muted-foreground">
+                    {connections.length === 0
+                      ? t("connections.emptyCount")
+                      : trimmedQuery
+                        ? t("connections.filteredCount", {
+                            shown: filteredConnections.length,
+                            total: connections.length,
+                          })
+                        : t("connections.savedCount", { n: connections.length })}
+                  </p>
+                </div>
+                <Button size="sm" variant="gradient" onClick={openCreate}>
+                  <Plus />
+                  {t("connections.newConnection")}
+                </Button>
               </div>
-              <Button size="sm" onClick={openCreate}>
-                <Plus />
-                Nova conexão
-              </Button>
+              {connections.length > 0 && (
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder={t("connections.filterPlaceholder")}
+                    className="h-8 pl-8 pr-8 text-sm"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => setQuery("")}
+                      aria-label={t("connections.clearFilter")}
+                      className="absolute right-1.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
             </header>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -82,9 +123,16 @@ export function ConnectionsScreen({ onConnect }: ConnectionsScreenProps) {
                 </CenteredState>
               ) : connections.length === 0 ? (
                 <EmptyState onCreate={openCreate} />
+              ) : filteredConnections.length === 0 ? (
+                <CenteredState>
+                  <Search className="size-6 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    {t("connections.noResults", { q: query })}
+                  </p>
+                </CenteredState>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {connections.map((connection) => (
+                  {filteredConnections.map((connection) => (
                     <ConnectionRow
                       key={connection.id}
                       connection={connection}
@@ -111,24 +159,55 @@ export function ConnectionsScreen({ onConnect }: ConnectionsScreenProps) {
 }
 
 /**
- * Left-hand branding panel — a hero slab that follows the active theme.
+ * Left-hand branding panel — hero slab mirroring the marketing site
+ * (faded grid, gradient glow blobs, gradient wordmark).
  */
 function BrandPanel() {
+  const { t } = useI18n();
   return (
-    <aside className="relative flex h-full w-full items-center justify-center overflow-hidden bg-muted">
-      {/* Green glow accents. */}
-      <div className="absolute -left-16 -top-16 size-72 rounded-full bg-primary/20 blur-3xl" />
-      <div className="absolute -bottom-20 -right-10 size-80 rounded-full bg-primary/15 blur-3xl" />
+    <aside className="relative flex h-full w-full items-center justify-center overflow-hidden bg-background">
+      {/* Faded grid backdrop. */}
+      <div className="bg-hero-grid pointer-events-none absolute inset-0 opacity-60" />
 
-      <div className="relative z-10 flex flex-col items-center justify-center gap-6 px-10 text-center">
+      {/* Drifting gradient glow blobs. */}
+      <div
+        className="animate-drift-a pointer-events-none absolute -left-24 -top-24 size-[22rem] rounded-full opacity-40 blur-3xl"
+        style={{ background: "var(--accent-grad)" }}
+      />
+      <div
+        className="animate-drift-b pointer-events-none absolute -bottom-32 -right-20 size-[26rem] rounded-full opacity-30 blur-3xl"
+        style={{ background: "var(--accent-grad)" }}
+      />
+      <div
+        className="animate-drift-a pointer-events-none absolute left-1/3 top-1/2 size-[18rem] rounded-full opacity-25 blur-3xl"
+        style={{
+          background: "var(--accent-grad)",
+          animationDelay: "-8s",
+          animationDuration: "44s",
+        }}
+      />
+
+      <div className="relative z-10 flex flex-col items-center justify-center gap-7 px-10 text-center">
+        <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+          <span className="inline-block size-1.5 rounded-full bg-primary shadow-[0_0_0_4px_color-mix(in_srgb,var(--primary)_25%,transparent)]" />
+          {t("connections.brandBadge")}
+        </span>
+
         <img
           src={logoUrl}
           alt="Postgly"
-          className="w-48 drop-shadow-[0_0_30px_rgba(74,144,229,0.3)]"
+          className="animate-brand-pulse w-48"
         />
+
+        <h2 className="max-w-sm text-2xl font-bold leading-tight tracking-tight">
+          <span className="text-grad">{t("connections.brandTitlePrefix")}</span>
+          {t("connections.brandTitleSuffix")}
+        </h2>
+
         <p className="max-w-xs text-sm text-muted-foreground">
-          Gerencie seus bancos PostgreSQL em um só lugar — rápido, local e
-          multiplataforma.
+          {t("connections.brandSubLine1Prefix")}
+          <span className="text-grad">{t("connections.brandSubLine1Suffix")}</span>.<br></br>
+          <span className="italic">{t("connections.brandSubLine2")}</span>
         </p>
       </div>
     </aside>
@@ -146,20 +225,21 @@ function CenteredState({ children }: { children: React.ReactNode }) {
 
 /** Shown when there are no saved connections yet. */
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const { t } = useI18n();
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-      <div className="flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+      <div className="bg-accent-grad flex size-14 items-center justify-center rounded-2xl text-white shadow-lg shadow-primary/25">
         <Database className="size-7" />
       </div>
       <div className="space-y-1">
-        <p className="text-sm font-medium">Nenhuma conexão ainda</p>
+        <p className="text-sm font-medium">{t("connections.emptyTitle")}</p>
         <p className="max-w-xs text-sm text-muted-foreground">
-          Crie sua primeira conexão para começar a explorar um banco.
+          {t("connections.emptySubtitle")}
         </p>
       </div>
-      <Button onClick={onCreate}>
+      <Button variant="gradient" onClick={onCreate}>
         <Plus />
-        Criar primeira conexão
+        {t("connections.createFirst")}
       </Button>
     </div>
   );

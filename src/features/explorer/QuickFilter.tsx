@@ -3,17 +3,18 @@ import { Filter, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useI18n, type TKey } from "@/i18n";
 
 import type { FilterOp, RowFilter } from "./types";
 
 /** UI operators, each mapping to a backend op plus a value transform. */
 const OPERATORS = [
-  { key: "eq", label: "igual a", op: "eq", wrap: (v: string) => v },
-  { key: "neq", label: "diferente de", op: "neq", wrap: (v: string) => v },
-  { key: "contains", label: "contém", op: "ilike", wrap: (v: string) => `%${v}%` },
-  { key: "starts", label: "começa com", op: "ilike", wrap: (v: string) => `${v}%` },
-  { key: "gt", label: "maior que", op: "gt", wrap: (v: string) => v },
-  { key: "lt", label: "menor que", op: "lt", wrap: (v: string) => v },
+  { key: "eq",       labelKey: "explorer.quickFilter.ops.eq"       as TKey, op: "eq",    wrap: (v: string) => v },
+  { key: "neq",      labelKey: "explorer.quickFilter.ops.neq"      as TKey, op: "neq",   wrap: (v: string) => v },
+  { key: "contains", labelKey: "explorer.quickFilter.ops.contains" as TKey, op: "ilike", wrap: (v: string) => `%${v}%` },
+  { key: "starts",   labelKey: "explorer.quickFilter.ops.starts"   as TKey, op: "ilike", wrap: (v: string) => `${v}%` },
+  { key: "gt",       labelKey: "explorer.quickFilter.ops.gt"       as TKey, op: "gt",    wrap: (v: string) => v },
+  { key: "lt",       labelKey: "explorer.quickFilter.ops.lt"       as TKey, op: "lt",    wrap: (v: string) => v },
 ] as const;
 
 interface QuickFilterProps {
@@ -31,6 +32,7 @@ const selectClass =
 
 /** The records quick-filter bar: column + operator + value. */
 export function QuickFilter({ columns, active, onApply }: QuickFilterProps) {
+  const { t } = useI18n();
   const [column, setColumn] = useState("");
   const [opKey, setOpKey] = useState<(typeof OPERATORS)[number]["key"]>("eq");
   const [value, setValue] = useState("");
@@ -61,7 +63,7 @@ export function QuickFilter({ columns, active, onApply }: QuickFilterProps) {
         className={selectClass}
         value={column}
         onChange={(e) => setColumn(e.target.value)}
-        aria-label="Coluna"
+        aria-label={t("explorer.quickFilter.column")}
       >
         {columns.map((c) => (
           <option key={c} value={c}>
@@ -74,11 +76,11 @@ export function QuickFilter({ columns, active, onApply }: QuickFilterProps) {
         className={selectClass}
         value={opKey}
         onChange={(e) => setOpKey(e.target.value as typeof opKey)}
-        aria-label="Operador"
+        aria-label={t("explorer.quickFilter.operator")}
       >
         {OPERATORS.map((o) => (
           <option key={o.key} value={o.key}>
-            {o.label}
+            {t(o.labelKey)}
           </option>
         ))}
       </select>
@@ -88,18 +90,18 @@ export function QuickFilter({ columns, active, onApply }: QuickFilterProps) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && apply()}
-        placeholder="valor"
+        placeholder={t("common.placeholderValue")}
       />
 
       <Button size="sm" onClick={apply} disabled={!column}>
         <Filter />
-        Filtrar
+        {t("explorer.filter")}
       </Button>
 
       {active && (
         <Button size="sm" variant="ghost" onClick={clear}>
           <X />
-          Limpar
+          {t("common.clear")}
         </Button>
       )}
     </div>

@@ -5,77 +5,205 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ---------------------------------------------------------------------------
- * Design tokens.
- * Light/dark palettes live in :root / .dark; the @theme block maps them onto
- * Tailwind utilities (bg-background, text-foreground, ...). shadcn/ui
- * components added in later phases consume these names directly.
+ * Design tokens — aligned with the marketing site palette (purple + cyan
+ * with a subtle gradient accent). Light/dark palettes live in :root / .dark;
+ * the @theme block maps them onto Tailwind utilities (bg-background, ...).
  * ------------------------------------------------------------------------- */
 :root {
-  --radius: 0.625rem;
+  --radius: 0.875rem;
 
-  --background: oklch(0.99 0 0);
-  --foreground: oklch(0.21 0.01 260);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.18 0.015 270);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.01 260);
+  --card-foreground: oklch(0.18 0.015 270);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.01 260);
+  --popover-foreground: oklch(0.18 0.015 270);
 
-  --primary: oklch(0.57 0.16 150);
+  /* Primary == site's --accent (#6c5ce7 purple). */
+  --primary: oklch(0.57 0.22 286);
   --primary-foreground: oklch(0.99 0 0);
 
-  --secondary: oklch(0.97 0.005 260);
-  --secondary-foreground: oklch(0.21 0.01 260);
+  /* Secondary accent == site's --accent-2 (#00b8d4 cyan). */
+  --accent-2: oklch(0.74 0.13 211);
+  --accent-2-foreground: oklch(0.18 0.015 270);
 
-  --muted: oklch(0.97 0.005 260);
-  --muted-foreground: oklch(0.55 0.01 260);
+  --secondary: oklch(0.97 0.005 270);
+  --secondary-foreground: oklch(0.18 0.015 270);
 
-  --accent: oklch(0.97 0.005 260);
-  --accent-foreground: oklch(0.21 0.01 260);
+  --muted: oklch(0.972 0.006 270);
+  --muted-foreground: oklch(0.49 0.018 265);
 
-  --destructive: oklch(0.58 0.22 27);
+  /* Tailwind --accent token (used by hover/focus surfaces). Keep neutral. */
+  --accent: oklch(0.96 0.008 270);
+  --accent-foreground: oklch(0.18 0.015 270);
+
+  --destructive: oklch(0.62 0.22 27);
   --destructive-foreground: oklch(0.99 0 0);
 
-  --border: oklch(0.92 0.005 260);
-  --input: oklch(0.92 0.005 260);
-  --ring: oklch(0.57 0.16 150);
+  --border: oklch(0.93 0.007 270);
+  --input: oklch(0.93 0.007 270);
+  --ring: oklch(0.57 0.22 286);
 
-  --sidebar: oklch(0.98 0.003 260);
-  --sidebar-foreground: oklch(0.21 0.01 260);
-  --sidebar-border: oklch(0.92 0.005 260);
+  --sidebar: oklch(0.985 0.004 270);
+  --sidebar-foreground: oklch(0.18 0.015 270);
+  --sidebar-border: oklch(0.93 0.007 270);
+
+  /* Brand gradient — drives hero glows, gradient text, gradient CTAs. */
+  --grad-from: #6c5ce7;
+  --grad-to: #00b8d4;
+  --accent-grad: linear-gradient(135deg, #6c5ce7 0%, #00b8d4 100%);
 }
 
 .dark {
-  --background: oklch(0.18 0.008 260);
-  --foreground: oklch(0.95 0.003 260);
+  --background: oklch(0.155 0.012 270);
+  --foreground: oklch(0.93 0.008 270);
 
-  --card: oklch(0.21 0.009 260);
-  --card-foreground: oklch(0.95 0.003 260);
-  --popover: oklch(0.21 0.009 260);
-  --popover-foreground: oklch(0.95 0.003 260);
+  --card: oklch(0.205 0.018 270);
+  --card-foreground: oklch(0.93 0.008 270);
+  --popover: oklch(0.205 0.018 270);
+  --popover-foreground: oklch(0.93 0.008 270);
 
-  --primary: oklch(0.78 0.18 150);
-  --primary-foreground: oklch(0.18 0.008 260);
+  /* Lifted hues for dark mode (matches site #8b7cff / #38d6f5). */
+  --primary: oklch(0.68 0.18 286);
+  --primary-foreground: oklch(0.155 0.012 270);
 
-  --secondary: oklch(0.27 0.01 260);
-  --secondary-foreground: oklch(0.95 0.003 260);
+  --accent-2: oklch(0.82 0.13 215);
+  --accent-2-foreground: oklch(0.155 0.012 270);
 
-  --muted: oklch(0.27 0.01 260);
-  --muted-foreground: oklch(0.68 0.01 260);
+  --secondary: oklch(0.265 0.016 270);
+  --secondary-foreground: oklch(0.93 0.008 270);
 
-  --accent: oklch(0.3 0.012 260);
-  --accent-foreground: oklch(0.95 0.003 260);
+  --muted: oklch(0.245 0.014 270);
+  --muted-foreground: oklch(0.7 0.014 270);
 
-  --destructive: oklch(0.65 0.2 27);
+  --accent: oklch(0.3 0.018 270);
+  --accent-foreground: oklch(0.93 0.008 270);
+
+  --destructive: oklch(0.68 0.21 27);
   --destructive-foreground: oklch(0.98 0 0);
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.78 0.18 150);
+  --ring: oklch(0.68 0.18 286);
 
-  --sidebar: oklch(0.21 0.009 260);
-  --sidebar-foreground: oklch(0.95 0.003 260);
+  --sidebar: oklch(0.19 0.016 270);
+  --sidebar-foreground: oklch(0.93 0.008 270);
   --sidebar-border: oklch(1 0 0 / 10%);
+
+  --grad-from: #8b7cff;
+  --grad-to: #38d6f5;
+  --accent-grad: linear-gradient(135deg, #8b7cff 0%, #38d6f5 100%);
+}
+
+/* ---------------------------------------------------------------------------
+ * Color palettes — selectable in Settings → Aparência. The default (purple)
+ * lives in :root / .dark above. Each palette overrides only the brand tokens
+ * (--primary, --ring, --accent-2, --grad-from/to) so layout neutrals stay put.
+ * Light values target oklch lightness ~0.57; dark ~0.68 to match originals.
+ * ------------------------------------------------------------------------- */
+html[data-color="blue"] {
+  --primary: oklch(0.57 0.2 250);
+  --ring: oklch(0.57 0.2 250);
+  --accent-2: oklch(0.74 0.13 200);
+  --grad-from: #2563eb;
+  --grad-to: #06b6d4;
+  --accent-grad: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
+}
+html.dark[data-color="blue"] {
+  --primary: oklch(0.68 0.17 250);
+  --ring: oklch(0.68 0.17 250);
+  --accent-2: oklch(0.82 0.13 200);
+  --grad-from: #60a5fa;
+  --grad-to: #38d6f5;
+  --accent-grad: linear-gradient(135deg, #60a5fa 0%, #38d6f5 100%);
+}
+
+html[data-color="red"] {
+  --primary: oklch(0.58 0.22 25);
+  --ring: oklch(0.58 0.22 25);
+  --accent-2: oklch(0.74 0.15 350);
+  --grad-from: #dc2626;
+  --grad-to: #f97316;
+  --accent-grad: linear-gradient(135deg, #dc2626 0%, #f97316 100%);
+}
+html.dark[data-color="red"] {
+  --primary: oklch(0.68 0.2 25);
+  --ring: oklch(0.68 0.2 25);
+  --accent-2: oklch(0.82 0.14 350);
+  --grad-from: #f87171;
+  --grad-to: #fb923c;
+  --accent-grad: linear-gradient(135deg, #f87171 0%, #fb923c 100%);
+}
+
+html[data-color="pink"] {
+  --primary: oklch(0.6 0.22 340);
+  --ring: oklch(0.6 0.22 340);
+  --accent-2: oklch(0.74 0.16 300);
+  --grad-from: #db2777;
+  --grad-to: #a855f7;
+  --accent-grad: linear-gradient(135deg, #db2777 0%, #a855f7 100%);
+}
+html.dark[data-color="pink"] {
+  --primary: oklch(0.7 0.18 340);
+  --ring: oklch(0.7 0.18 340);
+  --accent-2: oklch(0.82 0.14 300);
+  --grad-from: #f472b6;
+  --grad-to: #c084fc;
+  --accent-grad: linear-gradient(135deg, #f472b6 0%, #c084fc 100%);
+}
+
+html[data-color="green"] {
+  --primary: oklch(0.6 0.17 150);
+  --ring: oklch(0.6 0.17 150);
+  --accent-2: oklch(0.74 0.13 180);
+  --grad-from: #16a34a;
+  --grad-to: #14b8a6;
+  --accent-grad: linear-gradient(135deg, #16a34a 0%, #14b8a6 100%);
+}
+html.dark[data-color="green"] {
+  --primary: oklch(0.7 0.16 150);
+  --ring: oklch(0.7 0.16 150);
+  --accent-2: oklch(0.82 0.13 180);
+  --grad-from: #4ade80;
+  --grad-to: #2dd4bf;
+  --accent-grad: linear-gradient(135deg, #4ade80 0%, #2dd4bf 100%);
+}
+
+html[data-color="orange"] {
+  --primary: oklch(0.66 0.18 55);
+  --ring: oklch(0.66 0.18 55);
+  --accent-2: oklch(0.78 0.15 30);
+  --grad-from: #ea580c;
+  --grad-to: #f59e0b;
+  --accent-grad: linear-gradient(135deg, #ea580c 0%, #f59e0b 100%);
+}
+html.dark[data-color="orange"] {
+  --primary: oklch(0.74 0.17 55);
+  --ring: oklch(0.74 0.17 55);
+  --accent-2: oklch(0.84 0.14 30);
+  --grad-from: #fb923c;
+  --grad-to: #fbbf24;
+  --accent-grad: linear-gradient(135deg, #fb923c 0%, #fbbf24 100%);
+}
+
+html[data-color="yellow"] {
+  --primary: oklch(0.74 0.17 85);
+  --primary-foreground: oklch(0.18 0.015 270);
+  --ring: oklch(0.74 0.17 85);
+  --accent-2: oklch(0.78 0.16 60);
+  --grad-from: #eab308;
+  --grad-to: #f59e0b;
+  --accent-grad: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);
+}
+html.dark[data-color="yellow"] {
+  --primary: oklch(0.82 0.16 85);
+  --primary-foreground: oklch(0.155 0.012 270);
+  --ring: oklch(0.82 0.16 85);
+  --accent-2: oklch(0.86 0.15 60);
+  --grad-from: #facc15;
+  --grad-to: #fbbf24;
+  --accent-grad: linear-gradient(135deg, #facc15 0%, #fbbf24 100%);
 }
 
 @theme inline {
@@ -93,6 +221,8 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-2: var(--accent-2);
+  --color-accent-2-foreground: var(--accent-2-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
@@ -102,8 +232,8 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
@@ -130,5 +260,140 @@
     overflow: hidden;
     -webkit-user-select: none;
     user-select: none;
+  }
+}
+
+@layer utilities {
+  /* Brand gradient surface — used by hero CTAs and glow blobs. */
+  .bg-accent-grad {
+    background: var(--accent-grad);
+  }
+
+  /* Brand gradient text — hero titles, brand mark. */
+  .text-grad {
+    background: var(--accent-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Slow drifting glow blobs (hero backdrop "clouds"). */
+  @keyframes drift-a {
+    0%   { transform: translate3d(0, 0, 0) scale(1); }
+    25%  { transform: translate3d(8vw, 6vh, 0) scale(1.08); }
+    50%  { transform: translate3d(14vw, -4vh, 0) scale(0.96); }
+    75%  { transform: translate3d(4vw, 10vh, 0) scale(1.1); }
+    100% { transform: translate3d(0, 0, 0) scale(1); }
+  }
+  @keyframes drift-b {
+    0%   { transform: translate3d(0, 0, 0) scale(1); }
+    25%  { transform: translate3d(-10vw, -8vh, 0) scale(1.06); }
+    50%  { transform: translate3d(-4vw, 6vh, 0) scale(0.92); }
+    75%  { transform: translate3d(-14vw, -2vh, 0) scale(1.12); }
+    100% { transform: translate3d(0, 0, 0) scale(1); }
+  }
+  .animate-drift-a {
+    animation: drift-a 28s ease-in-out infinite;
+    will-change: transform;
+  }
+  .animate-drift-b {
+    animation: drift-b 36s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  /* Slow pulsing brand glow for the logo. */
+  @keyframes brand-pulse {
+    0%, 100% {
+      filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--primary) 28%, transparent));
+    }
+    50% {
+      filter: drop-shadow(0 14px 42px color-mix(in srgb, var(--primary) 60%, transparent))
+              drop-shadow(0 0 28px color-mix(in srgb, var(--accent-2) 35%, transparent));
+    }
+  }
+  .animate-brand-pulse {
+    animation: brand-pulse 10s ease-in-out infinite;
+    will-change: filter;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-drift-a,
+    .animate-drift-b,
+    .animate-brand-pulse {
+      animation: none !important;
+    }
+  }
+
+  /* Modern range slider — gradient track, glowing thumb. */
+  .range-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  .range-slider::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--accent-grad);
+  }
+  .range-slider::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--accent-grad);
+  }
+  .range-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--background);
+    border: 2px solid color-mix(in srgb, var(--primary) 90%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent);
+    margin-top: -5px;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+  }
+  .range-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--background);
+    border: 2px solid color-mix(in srgb, var(--primary) 90%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent);
+  }
+  .range-slider:hover::-webkit-slider-thumb,
+  .range-slider:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 25%, transparent);
+    transform: scale(1.08);
+  }
+  .range-slider:hover::-moz-range-thumb,
+  .range-slider:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 25%, transparent);
+    transform: scale(1.08);
+  }
+  .range-slider:focus-visible {
+    outline: none;
+  }
+
+  /* Soft grid backdrop, faded with a radial mask (mirrors the site hero). */
+  .bg-hero-grid {
+    background-image:
+      linear-gradient(
+        to right,
+        color-mix(in srgb, var(--border) 70%, transparent) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--border) 70%, transparent) 1px,
+        transparent 1px
+      );
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at 50% 0%, #000 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(
+      ellipse at 50% 0%,
+      #000 30%,
+      transparent 75%
+    );
   }
 }

@@ -7,6 +7,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { ConnectionMeta } from "@/features/connections/types";
 
@@ -30,6 +31,7 @@ type DetailTab = "structure" | "records";
  * on mount, closed on unmount.
  */
 export function ExplorerScreen({ connection, onClose }: ExplorerScreenProps) {
+  const { t } = useI18n();
   const [session, setSession] = useState<string | null>(null);
   const [opening, setOpening] = useState(true);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -75,14 +77,14 @@ export function ExplorerScreen({ connection, onClose }: ExplorerScreenProps) {
       {opening ? (
         <CenteredState>
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Conectando…</p>
+          <p className="text-sm text-muted-foreground">{t("explorer.connecting")}</p>
         </CenteredState>
       ) : openError ? (
         <CenteredState>
           <AlertCircle className="size-6 text-destructive" />
           <p className="max-w-md text-sm text-destructive">{openError}</p>
           <Button size="sm" variant="outline" onClick={onClose}>
-            Fechar aba
+            {t("explorer.closeTab")}
           </Button>
         </CenteredState>
       ) : session ? (
@@ -125,6 +127,7 @@ interface DetailPanelProps {
 
 /** Right panel: tabbed view of the selected table. */
 function DetailPanel({ sessionId, table, tab, onTabChange }: DetailPanelProps) {
+  const { t } = useI18n();
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-border px-4 pt-2">
@@ -133,10 +136,10 @@ function DetailPanel({ sessionId, table, tab, onTabChange }: DetailPanelProps) {
           {table.schema}.{table.name}
         </span>
         <Tab active={tab === "structure"} onClick={() => onTabChange("structure")}>
-          Estrutura
+          {t("explorer.structureTab")}
         </Tab>
         <Tab active={tab === "records"} onClick={() => onTabChange("records")}>
-          Registros
+          {t("explorer.recordsTab")}
         </Tab>
       </div>
 
@@ -187,14 +190,15 @@ function Tab({
 
 /** Empty state shown before a table is selected. */
 function NoSelection() {
+  const { t } = useI18n();
   return (
     <CenteredState>
       <div className="flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
         <Table2 className="size-7" />
       </div>
-      <p className="text-sm font-medium">Nenhuma tabela selecionada</p>
+      <p className="text-sm font-medium">{t("explorer.noTableSelected")}</p>
       <p className="max-w-xs text-center text-sm text-muted-foreground">
-        Escolha uma tabela na árvore à esquerda para ver sua estrutura.
+        {t("explorer.noTableSelectedDesc")}
       </p>
     </CenteredState>
   );

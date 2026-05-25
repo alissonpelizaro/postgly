@@ -12,6 +12,7 @@ import {
   Loader2,
   Pencil,
   RotateCcw,
+  SlidersHorizontal,
   Sparkles,
   Wrench,
   X,
@@ -19,7 +20,10 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { localeFor, useI18n, type TKey } from "@/i18n";
 import { cn } from "@/lib/utils";
+import { settingsApi } from "@/features/settings/api";
+import type { SettingsView } from "@/features/settings/types";
 
 import { explorerApi } from "./api";
 import type {
@@ -49,10 +53,19 @@ type State =
  * without running it.
  */
 export function NlQueryBar({ sessionId, onAcceptSql }: NlQueryBarProps) {
+  const { t } = useI18n();
   const [instruction, setInstruction] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
   const [traceOpen, setTraceOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  // Per-call overrides for model / temperature. `undefined` = use the
+  // saved default from Settings. Persists across submissions until the
+  // user explicitly clears it.
+  const [override, setOverride] = useState<{
+    model?: string;
+    temperature?: number;
+  }>({});
   const inputRef = useRef<HTMLInputElement>(null);
 
   const generate = useCallback(
@@ -60,7 +73,7 @@ export function NlQueryBar({ sessionId, onAcceptSql }: NlQueryBarProps) {
       setState({ kind: "running" });
       setTraceOpen(false);
       try {
-        const output = await explorerApi.generateSql(sessionId, text);
+        const output = await explorerApi.generateSql(sessionId, text, override);
         setState({ kind: "done", output });
         // Auto-expand trace when the model failed — the user wants to know why.
         if (output.status !== "ok") setTraceOpen(true);
@@ -68,7 +81,7 @@ export function NlQueryBar({ sessionId, onAcceptSql }: NlQueryBarProps) {
         setState({ kind: "error", message: String(err) });
       }
     },
-    [sessionId],
+    [sessionId, override],
   );
 
   const submit = async (event: FormEvent) => {
@@ -100,10 +113,7 @@ export function NlQueryBar({ sessionId, onAcceptSql }: NlQueryBarProps) {
   const refine = () => {
     if (state.kind !== "done" || state.output.status !== "ok" || !state.output.sql) return;
     const previous = state.output.sql.replace(/\s+/g, " ").trim();
-    const lastInstruction = state.output.reason ? "" : "";
-    // Compose a one-shot follow-up: prior SQL + (optional) original
-    // intent + an empty refinement slot the user fills in.
-    const seed = `Refine a query abaixo conforme a próxima instrução.\nQuery atual: ${previous}\nRefinamento: ${lastInstruction}`;
+    const seed = t("explorer.nl.refineSeed", { sql: previous });
     setInstruction(seed);
     setState({ kind: "idle" });
     setTraceOpen(false);
@@ -127,7 +137,7 @@ export function NlQueryBar({ sessionId, onAcceptSql }: NlQueryBarProps) {
           ref={inputRef}
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
-          placeholder="Pergunte em linguagem natural — ex.: todos os usuários cadastrados mês passado"
+          placeholder={t("explorer.nl.placeholder")}
           disabled={state.kind === "running"}
           className="h-8 border-transparent bg-transparent shadow-none focus-visible:ring-0"
         />
@@ -141,8 +151,14 @@ export function NlQueryBar({ sessionId, onAcceptSql }: NlQueryBarProps) {
           ) : (
             <Sparkles />
           )}
-          Gerar
+          {t("explorer.nl.generate")}
         </Button>
+        <OverridePopover
+          open={overrideOpen}
+          onOpenChange={setOverrideOpen}
+          override={override}
+          onChange={setOverride}
+        />
         <HistoryPopover
           sessionId={sessionId}
           open={historyOpen}
@@ -154,7 +170,7 @@ export function NlQueryBar({ sessionId, onAcceptSql }: NlQueryBarProps) {
             type="button"
             size="icon"
             variant="ghost"
-            aria-label="Limpar"
+            aria-label={t("explorer.nl.cleanAria")}
             onClick={reset}
             className="size-7"
           >
@@ -207,6 +223,7 @@ function ResultPanel({
   canRetry,
   onRefine,
 }: ResultPanelProps) {
+  const { t } = useI18n();
   const isOk = output.status === "ok" && output.sql;
   return (
     <div className="flex flex-col gap-2">
@@ -232,10 +249,10 @@ function ResultPanel({
               size="sm"
               variant="ghost"
               onClick={onRefine}
-              title="Manter contexto e pedir um refinamento"
+              title={t("explorer.nl.refineTitle")}
             >
               <Pencil />
-              Refinar
+              {t("common.refine")}
             </Button>
             <Button
               type="button"
@@ -244,11 +261,11 @@ function ResultPanel({
               onClick={() => onAcceptSql(output.sql!)}
             >
               <Edit3 />
-              Editar
+              {t("explorer.nl.editSql")}
             </Button>
             <Button type="button" size="sm" onClick={() => onAcceptSql(output.sql!)}>
               <Check />
-              Usar SQL
+              {t("explorer.nl.useSql")}
             </Button>
           </div>
         </div>
@@ -268,7 +285,7 @@ function ResultPanel({
             ) : (
               <ChevronRight className="size-3" />
             )}
-            Raciocínio do agente ({output.trace.length})
+            {t("explorer.nl.reasoning", { n: output.trace.length })}
           </button>
           {traceOpen && <TraceList trace={output.trace} />}
         </div>
@@ -284,6 +301,7 @@ function StatusBanner({
   status: AgentStatus;
   reason?: string;
 }) {
+  const { t } = useI18n();
   if (status === "ok") return null;
   const meta = STATUS_META[status];
   const Icon = meta.icon;
@@ -296,7 +314,7 @@ function StatusBanner({
     >
       <Icon className="mt-0.5 size-4 shrink-0" />
       <div className="min-w-0">
-        <p className="font-medium">{meta.label}</p>
+        <p className="font-medium">{t(meta.labelKey)}</p>
         {reason && <p className="mt-0.5 break-words opacity-90">{reason}</p>}
       </div>
     </div>
@@ -304,15 +322,20 @@ function StatusBanner({
 }
 
 function UsageBadge({ usage }: { usage: TokenUsage }) {
+  const { lang, t } = useI18n();
   if (usage.total_tokens === 0) return null;
-  const fmt = new Intl.NumberFormat("pt-BR").format;
+  const fmt = new Intl.NumberFormat(localeFor(lang)).format;
   return (
     <div className="flex items-center gap-1 text-xs text-muted-foreground">
       <Gauge className="size-3" />
       <span>
-        {fmt(usage.total_tokens)} tokens
+        {t("explorer.nl.tokens", { n: fmt(usage.total_tokens) })}
         <span className="ml-1 opacity-70">
-          ({fmt(usage.prompt_tokens)} prompt + {fmt(usage.completion_tokens)} completion)
+          {" "}
+          {t("explorer.nl.promptCompletion", {
+            prompt: fmt(usage.prompt_tokens),
+            completion: fmt(usage.completion_tokens),
+          })}
         </span>
       </span>
     </div>
@@ -333,6 +356,7 @@ function HistoryPopover({
   onOpenChange,
   onPick,
 }: HistoryPopoverProps) {
+  const { t, lang } = useI18n();
   const [entries, setEntries] = useState<NlHistoryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -364,8 +388,8 @@ function HistoryPopover({
         type="button"
         size="icon"
         variant="ghost"
-        aria-label="Histórico"
-        title="Histórico"
+        aria-label={t("explorer.nl.historyTitle")}
+        title={t("explorer.nl.historyTitle")}
         onClick={() => onOpenChange(!open)}
         className="size-7"
       >
@@ -374,7 +398,7 @@ function HistoryPopover({
       {open && (
         <div className="absolute right-0 top-full z-50 mt-1 w-[28rem] max-w-[80vw] rounded-md border border-border bg-popover p-2 text-sm shadow-md">
           <div className="px-1 pb-1 text-xs font-medium text-muted-foreground">
-            Histórico desta sessão
+            {t("explorer.nl.historySession")}
           </div>
           {error ? (
             <div className="flex items-start gap-1.5 rounded p-2 text-xs text-destructive">
@@ -383,11 +407,11 @@ function HistoryPopover({
             </div>
           ) : entries === null ? (
             <div className="flex items-center gap-1.5 p-2 text-xs text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" /> Carregando…
+              <Loader2 className="size-3.5 animate-spin" /> {t("common.loading")}
             </div>
           ) : entries.length === 0 ? (
             <p className="p-2 text-xs text-muted-foreground">
-              Sem consultas anteriores nesta sessão.
+              {t("explorer.nl.historyEmpty")}
             </p>
           ) : (
             <ul className="max-h-72 overflow-y-auto">
@@ -400,7 +424,7 @@ function HistoryPopover({
                   >
                     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <StatusDot status={entry.output.status} />
-                      <span>{formatTimestamp(entry.created_at)}</span>
+                      <span>{formatTimestamp(entry.created_at, lang)}</span>
                       {entry.output.usage.total_tokens > 0 && (
                         <span className="ml-auto opacity-70">
                           {entry.output.usage.total_tokens} tok
@@ -438,9 +462,9 @@ function StatusDot({ status }: { status: AgentStatus }) {
   return <span className={cn("size-2 rounded-full", tone)} aria-hidden="true" />;
 }
 
-function formatTimestamp(seconds: number): string {
+function formatTimestamp(seconds: number, lang: string): string {
   const date = new Date(seconds * 1000);
-  return date.toLocaleString("pt-BR", {
+  return date.toLocaleString(localeFor(lang as never), {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -462,11 +486,12 @@ function SuggestionList({
   onRetry,
   canRetry,
 }: SuggestionListProps) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border bg-background p-2.5">
       <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <Lightbulb className="size-3.5" />
-        Sugestões para refinar a instrução
+        {t("explorer.nl.suggestions")}
       </div>
       <ul className="flex flex-wrap gap-1.5">
         {suggestions.map((suggestion) => (
@@ -475,7 +500,7 @@ function SuggestionList({
               type="button"
               onClick={() => onUse(suggestion)}
               className="rounded-full border border-border bg-card px-2.5 py-1 text-xs text-foreground transition-colors hover:border-primary/50 hover:bg-accent"
-              title="Adicionar à instrução"
+              title={t("explorer.nl.addToInstruction")}
             >
               {suggestion}
             </button>
@@ -491,7 +516,7 @@ function SuggestionList({
           disabled={!canRetry}
         >
           <RotateCcw />
-          Tentar novamente
+          {t("common.retry")}
         </Button>
       </div>
     </div>
@@ -500,20 +525,20 @@ function SuggestionList({
 
 const STATUS_META: Record<
   Exclude<AgentStatus, "ok">,
-  { label: string; icon: typeof AlertCircle; tone: string }
+  { labelKey: TKey; icon: typeof AlertCircle; tone: string }
 > = {
   need_info: {
-    label: "Mais informações necessárias",
+    labelKey: "explorer.nl.status.needInfo",
     icon: HelpCircle,
     tone: "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300",
   },
   not_found: {
-    label: "Não encontrei o que precisa",
+    labelKey: "explorer.nl.status.notFound",
     icon: AlertCircle,
     tone: "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300",
   },
   error: {
-    label: "Não foi possível gerar a query",
+    labelKey: "explorer.nl.status.error",
     icon: AlertCircle,
     tone: "border-destructive/30 bg-destructive/10 text-destructive",
   },
@@ -588,4 +613,253 @@ function summarizeResult(result: unknown): string {
 
 function truncate(s: string, max: number): string {
   return s.length <= max ? s : `${s.slice(0, max - 1)}…`;
+}
+
+interface OverridePopoverProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  override: { model?: string; temperature?: number };
+  onChange: (next: { model?: string; temperature?: number }) => void;
+}
+
+/**
+ * Per-instruction overrides for model and temperature. Loads the saved
+ * defaults from Settings, then probes `{base_url}/models` so the user
+ * picks from a real list. Overrides persist across submissions until
+ * cleared.
+ */
+function OverridePopover({
+  open,
+  onOpenChange,
+  override,
+  onChange,
+}: OverridePopoverProps) {
+  const { t } = useI18n();
+  const [view, setView] = useState<SettingsView | null>(null);
+  const [models, setModels] = useState<
+    | { kind: "idle" }
+    | { kind: "loading" }
+    | { kind: "ok"; list: string[] }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+  const [error, setError] = useState<string | null>(null);
+  const [customModel, setCustomModel] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const active =
+    override.model !== undefined || override.temperature !== undefined;
+
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
+    setModels({ kind: "loading" });
+    settingsApi
+      .get()
+      .then((v) => {
+        setView(v);
+        // Try to fetch the models list, but degrade gracefully — the
+        // user can still type a custom model name.
+        if (!v.llm.base_url.trim() || !v.llm_api_key_configured) {
+          setModels({ kind: "error", message: t("explorer.nl.override.configureLlmFirst") });
+          return;
+        }
+        settingsApi
+          .testLlm({ ...v.llm, api_key: "" })
+          .then((res) => setModels({ kind: "ok", list: res.models }))
+          .catch((e) => setModels({ kind: "error", message: String(e) }));
+      })
+      .catch((e) => setError(String(e)));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (target && containerRef.current?.contains(target)) return;
+      onOpenChange(false);
+    };
+    window.addEventListener("pointerdown", onPointer);
+    return () => window.removeEventListener("pointerdown", onPointer);
+  }, [open, onOpenChange]);
+
+  const defaultModel = view?.llm.model ?? "";
+  const defaultTemperature = view?.llm.temperature ?? 0;
+  const effectiveModel = override.model ?? defaultModel;
+  const effectiveTemperature = override.temperature ?? defaultTemperature;
+  const list = models.kind === "ok" ? models.list : [];
+  const modelInList = effectiveModel !== "" && list.includes(effectiveModel);
+
+  const setModel = (value: string | undefined) => {
+    onChange({ ...override, model: value });
+  };
+  const setTemperature = (value: number | undefined) => {
+    onChange({ ...override, temperature: value });
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        aria-label={t("explorer.nl.override.ariaLabel")}
+        title={
+          active
+            ? t("explorer.nl.override.activeTitle")
+            : t("explorer.nl.override.inactiveTitle")
+        }
+        onClick={() => onOpenChange(!open)}
+        className={cn(
+          "relative size-7",
+          active && "text-primary hover:text-primary",
+        )}
+      >
+        <SlidersHorizontal className="size-4" />
+        {active && (
+          <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-primary" />
+        )}
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-1 w-[22rem] max-w-[90vw] rounded-md border border-border bg-popover p-3 text-sm shadow-md">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">
+              {t("explorer.nl.override.title")}
+            </span>
+            {active && (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange({});
+                  setCustomModel(false);
+                }}
+                className="text-xs text-primary hover:underline"
+              >
+                {t("common.useDefault")}
+              </button>
+            )}
+          </div>
+
+          {error && (
+            <div className="mb-2 flex items-start gap-1.5 rounded p-2 text-xs text-destructive">
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <div className="mb-3 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium">{t("settings.llm.model")}</span>
+              <span className="text-muted-foreground">
+                {t("explorer.nl.override.modelDefault", { model: defaultModel || "—" })}
+              </span>
+            </div>
+            {models.kind === "loading" ? (
+              <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-transparent px-3 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" />
+                {t("settings.llm.loadingModels")}
+              </div>
+            ) : customModel || list.length === 0 ? (
+              <div className="flex flex-col gap-1">
+                <Input
+                  value={override.model ?? ""}
+                  placeholder={defaultModel || t("explorer.nl.override.customPlaceholder")}
+                  onChange={(e) =>
+                    setModel(e.target.value === "" ? undefined : e.target.value)
+                  }
+                  className="h-8 text-sm"
+                />
+                {list.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomModel(false)}
+                    className="self-start text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {t("explorer.nl.override.backToList")}
+                  </button>
+                )}
+                {models.kind === "error" && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {t("settings.llm.modelsListUnavailable")}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <select
+                value={override.model ?? "__default__"}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "__default__") return setModel(undefined);
+                  if (v === "__custom__") {
+                    setCustomModel(true);
+                    return;
+                  }
+                  setModel(v);
+                }}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="__default__">
+                  {t("explorer.nl.override.defaultOption", {
+                    model: defaultModel || t("explorer.nl.override.notDefined"),
+                  })}
+                </option>
+                {override.model !== undefined && !modelInList && (
+                  <option value={override.model}>
+                    {override.model}{t("settings.llm.notListed")}
+                  </option>
+                )}
+                {list.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+                <option value="__custom__">{t("explorer.nl.override.customOption")}</option>
+              </select>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium">{t("settings.llm.temperature")}</span>
+              <span className="text-muted-foreground">
+                {t("explorer.nl.override.temperatureDefault")}{" "}
+                <span className="font-mono">
+                  {defaultTemperature.toFixed(1)}
+                </span>
+                {override.temperature !== undefined && (
+                  <>
+                    {" · "}
+                    <span className="font-mono text-primary">
+                      {override.temperature.toFixed(1)}
+                    </span>
+                  </>
+                )}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={2}
+              step={0.1}
+              value={effectiveTemperature}
+              onChange={(e) => setTemperature(Number(e.target.value))}
+              className="range-slider h-9 w-full"
+            />
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
+              <span>{t("settings.llm.precise")}</span>
+              {override.temperature !== undefined && (
+                <button
+                  type="button"
+                  onClick={() => setTemperature(undefined)}
+                  className="normal-case tracking-normal text-primary hover:underline"
+                >
+                  {t("common.useDefault")}
+                </button>
+              )}
+              <span>{t("settings.llm.creative")}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

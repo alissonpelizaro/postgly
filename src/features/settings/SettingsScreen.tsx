@@ -1,12 +1,16 @@
-import { useState } from "react";
-import { ShieldAlert, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Palette, Settings as SettingsIcon, ShieldAlert, Sparkles, X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
+import { AppearancePanel } from "./categories/AppearancePanel";
+import { GeneralPanel } from "./categories/GeneralPanel";
 import { LlmConfigPanel } from "./categories/LlmConfigPanel";
 import { SafetyPanel } from "./categories/SafetyPanel";
 
-type CategoryId = "llm" | "safety";
+type CategoryId = "general" | "llm" | "appearance" | "safety";
 
 interface Category {
   id: CategoryId;
@@ -15,42 +19,66 @@ interface Category {
   icon: typeof Sparkles;
 }
 
-const CATEGORIES: Category[] = [
-  {
-    id: "llm",
-    label: "LLM Config",
-    description: "Provedor compatível com OpenAI para queries em linguagem natural",
-    icon: Sparkles,
-  },
-  {
-    id: "safety",
-    label: "Segurança",
-    description: "Confirmações antes de operações destrutivas",
-    icon: ShieldAlert,
-  },
-];
+interface SettingsScreenProps {
+  /** Closes the settings view (returns to the previous tab or home). */
+  onClose: () => void;
+}
 
-/**
- * Settings shell — a left sidebar of categories and a right pane that
- * renders the selected category. New sections (themes, shortcuts, etc.)
- * plug in by appending to [`CATEGORIES`] and adding a panel.
- */
-export function SettingsScreen() {
-  const [active, setActive] = useState<CategoryId>("llm");
+export function SettingsScreen({ onClose }: SettingsScreenProps) {
+  const { t } = useI18n();
+  const [active, setActive] = useState<CategoryId>("general");
+
+  const categories = useMemo<Category[]>(
+    () => [
+      {
+        id: "general",
+        label: t("settings.categories.general"),
+        description: t("settings.categories.generalDesc"),
+        icon: SettingsIcon,
+      },
+      {
+        id: "llm",
+        label: t("settings.categories.llm"),
+        description: t("settings.categories.llmDesc"),
+        icon: Sparkles,
+      },
+      {
+        id: "appearance",
+        label: t("settings.categories.appearance"),
+        description: t("settings.categories.appearanceDesc"),
+        icon: Palette,
+      },
+      {
+        id: "safety",
+        label: t("settings.categories.safety"),
+        description: t("settings.categories.safetyDesc"),
+        icon: ShieldAlert,
+      },
+    ],
+    [t],
+  );
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   return (
     <div className="flex h-full w-full bg-background">
       <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-sidebar">
         <header className="border-b border-border px-4 py-3">
           <h1 className="text-base font-semibold leading-tight">
-            Configurações
+            {t("settings.title")}
           </h1>
           <p className="text-xs text-muted-foreground">
-            Preferências do aplicativo
+            {t("settings.subtitle")}
           </p>
         </header>
         <nav className="flex flex-1 flex-col gap-0.5 p-2">
-          {CATEGORIES.map((category) => (
+          {categories.map((category) => (
             <CategoryButton
               key={category.id}
               category={category}
@@ -59,10 +87,35 @@ export function SettingsScreen() {
             />
           ))}
         </nav>
+        <div className="border-t border-border p-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-start"
+            onClick={onClose}
+            title={t("common.closeEsc")}
+          >
+            <X />
+            {t("common.close")}
+          </Button>
+        </div>
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      <main className="relative min-w-0 flex-1 overflow-y-auto">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute right-3 top-3 z-10 size-8"
+          onClick={onClose}
+          aria-label={t("settings.closeAria")}
+          title={t("common.closeEsc")}
+        >
+          <X />
+        </Button>
+        {active === "general" && <GeneralPanel />}
         {active === "llm" && <LlmConfigPanel />}
+        {active === "appearance" && <AppearancePanel />}
         {active === "safety" && <SafetyPanel />}
       </main>
     </div>

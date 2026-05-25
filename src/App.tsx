@@ -22,6 +22,9 @@ const SETTINGS_VIEW = "settings";
 function App() {
   const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  // Remembers where the user was before opening Settings, so its
+  // close button can restore that view.
+  const [preSettingsId, setPreSettingsId] = useState<string | null>(null);
 
   const openTab = (connection: ConnectionMeta) => {
     const id = crypto.randomUUID();
@@ -65,7 +68,10 @@ function App() {
         activeId={activeId}
         onSelect={setActiveId}
         onClose={closeTab}
-        onOpenSettings={() => setActiveId(SETTINGS_VIEW)}
+        onOpenSettings={() => {
+          setPreSettingsId(activeId === SETTINGS_VIEW ? preSettingsId : activeId);
+          setActiveId(SETTINGS_VIEW);
+        }}
       />
 
       <div className="min-h-0 flex-1">
@@ -73,7 +79,18 @@ function App() {
           <ConnectionsScreen onConnect={openTab} />
         </Pane>
         <Pane visible={activeId === SETTINGS_VIEW}>
-          <SettingsScreen />
+          <SettingsScreen
+            onClose={() => {
+              // Restore the prior view if it still exists, otherwise home.
+              const target =
+                preSettingsId !== null &&
+                tabs.some((t) => t.id === preSettingsId)
+                  ? preSettingsId
+                  : null;
+              setActiveId(target);
+              setPreSettingsId(null);
+            }}
+          />
         </Pane>
         {tabs.map((tab) => (
           <Pane key={tab.id} visible={tab.id === activeId}>

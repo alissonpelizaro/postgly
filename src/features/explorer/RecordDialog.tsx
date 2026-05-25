@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import type { CellValue } from "./types";
@@ -62,6 +63,7 @@ export function RecordDialog({
   onSave,
   onClose,
 }: RecordDialogProps) {
+  const { t } = useI18n();
   // The value shown at open: edit seeds from the row (JSON pretty-printed),
   // insert leaves every field `undefined` (untouched).
   const initial = useMemo<Record<string, string | null | undefined>>(() => {
@@ -118,14 +120,14 @@ export function RecordDialog({
       <DialogContent className="max-h-[85vh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="border-b border-border px-5 py-4">
           <DialogTitle>
-            {mode === "insert" ? "Novo registro" : "Editar registro"}
+            {mode === "insert" ? t("explorer.record.newTitle") : t("explorer.record.editTitle")}
           </DialogTitle>
           <DialogDescription>
             {mode === "insert"
-              ? "Campos não preenchidos usam o valor padrão da coluna."
+              ? t("explorer.record.newDesc")
               : editable
-                ? "Altere os campos e salve. A chave primária identifica a linha."
-                : "Tabela sem chave primária — registro somente leitura."}
+                ? t("explorer.record.editDesc")
+                : t("explorer.record.readOnlyDesc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -169,7 +171,7 @@ export function RecordDialog({
                     isNull
                       ? "NULL"
                       : mode === "insert"
-                        ? "(padrão)"
+                        ? t("explorer.record.defaultPlaceholder")
                         : ""
                   }
                   onChange={(e) => setValue(column, e.target.value)}
@@ -196,14 +198,14 @@ export function RecordDialog({
 
         <DialogFooter className="border-t border-border px-5 py-3">
           <Button variant="ghost" onClick={onClose} disabled={saving}>
-            Cancelar
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={save}
             disabled={!editable || saving || values.length === 0}
           >
             {saving && <Loader2 className="animate-spin" />}
-            {mode === "insert" ? "Inserir" : "Salvar"}
+            {mode === "insert" ? t("common.insert") : t("common.save")}
             {values.length > 0 && ` (${values.length})`}
           </Button>
         </DialogFooter>

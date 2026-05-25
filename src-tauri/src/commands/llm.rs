@@ -25,6 +25,10 @@ pub async fn generate_sql<R: tauri::Runtime>(
     state: tauri::State<'_, AppState>,
     session_id: String,
     instruction: String,
+    // Optional per-call overrides (model + temperature) that win over
+    // the values stored in Settings.
+    model_override: Option<String>,
+    temperature_override: Option<f32>,
 ) -> AppResult<AgentOutput> {
     if instruction.trim().is_empty() {
         return Err(AppError::Other("instruction is empty".into()));
@@ -44,6 +48,16 @@ pub async fn generate_sql<R: tauri::Runtime>(
         ));
     }
 
+    // Resolve effective model + temperature, applying per-call overrides.
+    let effective_model = model_override
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(cfg.model.as_str());
+    let effective_temperature = temperature_override
+        .map(|t| t.clamp(0.0, 2.0))
+        .unwrap_or(cfg.temperature);
+
     // Session + cached schema.
     let session = session_for(&state, &session_id)?;
     let schema = get_database_schema(state.clone(), session_id.clone()).await?;
@@ -56,8 +70,8 @@ pub async fn generate_sql<R: tauri::Runtime>(
         &client,
         tool_defs,
         &executor,
-        &cfg.model,
-        cfg.temperature,
+        effective_model,
+        effective_temperature,
         agent::default_system_prompt(),
         instruction.clone(),
     )
@@ -273,6 +287,8 @@ mod tests {
             app.state::<AppState>(),
             "s".into(),
             "   ".into(),
+            None,
+            None,
         )
         .await
         .unwrap_err();
@@ -290,6 +306,8 @@ mod tests {
             app.state::<AppState>(),
             "s".into(),
             "list users".into(),
+            None,
+            None,
         )
         .await
         .unwrap_err();
@@ -313,6 +331,8 @@ mod tests {
             app.state::<AppState>(),
             "s".into(),
             "list users".into(),
+            None,
+            None,
         )
         .await
         .unwrap_err();
@@ -333,6 +353,8 @@ mod tests {
             app.state::<AppState>(),
             "ghost".into(),
             "anything".into(),
+            None,
+            None,
         )
         .await
         .unwrap_err();
@@ -368,6 +390,8 @@ mod tests {
             app.state::<AppState>(),
             "s".into(),
             "users".into(),
+            None,
+            None,
         )
         .await
         .unwrap();
@@ -408,6 +432,8 @@ mod tests {
                 app.state::<AppState>(),
                 "s".into(),
                 q.into(),
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -462,6 +488,8 @@ mod tests {
             app.state::<AppState>(),
             "s".into(),
             "usuarios cadastrados".into(),
+            None,
+            None,
         )
         .await
         .unwrap();
@@ -541,6 +569,8 @@ mod tests {
             app.state::<AppState>(),
             "s".into(),
             "list every user".into(),
+            None,
+            None,
         )
         .await
         .unwrap();

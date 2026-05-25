@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, KeyRound, Loader2 } from "lucide-react";
 
+import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import { explorerApi } from "./api";
@@ -13,6 +14,7 @@ interface TableStructureProps {
 
 /** "Structure" tab: the columns and indexes of the selected table. */
 export function TableStructure({ sessionId, table }: TableStructureProps) {
+  const { t } = useI18n();
   const [details, setDetails] = useState<TableDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,14 +50,14 @@ export function TableStructure({ sessionId, table }: TableStructureProps) {
 
   return (
     <div className="flex flex-col gap-6 overflow-y-auto p-5">
-      <Section title="Colunas" count={details.columns.length}>
+      <Section title={t("explorer.columns")} count={details.columns.length}>
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <th className="py-2 pr-4 font-medium">Coluna</th>
-              <th className="py-2 pr-4 font-medium">Tipo</th>
-              <th className="py-2 pr-4 font-medium">Nulo</th>
-              <th className="py-2 font-medium">Padrão</th>
+              <th className="py-2 pr-4 font-medium">{t("explorer.columnsHeaders.name")}</th>
+              <th className="py-2 pr-4 font-medium">{t("explorer.columnsHeaders.type")}</th>
+              <th className="py-2 pr-4 font-medium">{t("explorer.columnsHeaders.nullable")}</th>
+              <th className="py-2 font-medium">{t("explorer.columnsHeaders.default")}</th>
             </tr>
           </thead>
           <tbody>
@@ -69,7 +71,7 @@ export function TableStructure({ sessionId, table }: TableStructureProps) {
                     {col.is_primary_key && (
                       <KeyRound
                         className="size-3.5 text-amber-500"
-                        aria-label="Chave primária"
+                        aria-label={t("explorer.primaryKey")}
                       />
                     )}
                     {col.name}
@@ -90,9 +92,9 @@ export function TableStructure({ sessionId, table }: TableStructureProps) {
         </table>
       </Section>
 
-      <Section title="Índices" count={details.indexes.length}>
+      <Section title={t("explorer.indexes")} count={details.indexes.length}>
         {details.indexes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhum índice.</p>
+          <p className="text-sm text-muted-foreground">{t("explorer.noIndexes")}</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {details.indexes.map((idx) => (
