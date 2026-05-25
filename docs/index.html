@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark light" />
 
   <title>Postgly — The PostgreSQL Client with a Natural-Language SQL Assistant</title>
-  <meta name="description" content="Postgly is a modern, local-first PostgreSQL desktop client with a built-in AI assistant that turns plain English (or Portuguese) into safe, schema-aware SQL. Free, open, cross-platform — macOS, Windows, Linux." />
+  <meta name="description" content="Postgly is a modern, local-first PostgreSQL desktop client with a built-in AI assistant that turns plain natural language into safe, schema-aware SQL. Free, open, cross-platform — macOS, Windows, Linux." />
   <meta name="keywords" content="Postgly, PostgreSQL client, Postgres GUI, free Postgres client, natural language SQL, AI SQL generator, text to SQL, LLM Postgres, OpenAI Postgres, Ollama Postgres, schema aware AI, Tauri Postgres app, desktop Postgres tool, Postgres explorer, macOS Postgres client, Windows Postgres client, Linux Postgres client, pgAdmin alternative, DBeaver alternative, TablePlus alternative, Postico alternative, SQL editor, query builder, database management, postgres rag, ai database client" />
   <meta name="author" content="Alisson Pelizaro" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -159,8 +159,8 @@
               <div class="mock-main">
                 <div class="mock-nlbar">
                   <span class="spark">✨</span>
-                  <span class="nl-text">vendas do trimestre por cliente, em ordem decrescente</span>
-                  <span class="mock-btn">Gerar</span>
+                  <span class="nl-text">quarterly sales per customer, in descending order</span>
+                  <span class="mock-btn">Generate</span>
                 </div>
                 <pre class="mock-code"><span class="kw">SELECT</span> u.name, <span class="fn">SUM</span>(o.total) <span class="kw">AS</span> total
 <span class="kw">FROM</span> orders o
@@ -217,7 +217,7 @@
                 <span>Ask in any language</span>
               </div>
               <div class="prompt-box">
-                <p>"todos os usuários cadastrados no mês passado"</p>
+                <p>"all users registered last month"</p>
               </div>
               <div class="arrow">↓</div>
               <pre class="code"><span class="kw">SELECT</span> * <span class="kw">FROM</span> public.users
@@ -304,7 +304,7 @@
             <div class="ai-bullet">
               <div class="ai-icon">🔁</div>
               <h3>Refine, retry, recall</h3>
-              <p>Keep context across turns with <em>Refinar</em>, browse session history, see live token usage. Nothing runs until you hit play.</p>
+              <p>Keep context across turns with <em>Refine</em>, browse session history, see live token usage. Nothing runs until you hit play.</p>
             </div>
             <div class="ai-bullet">
               <div class="ai-icon">🤝</div>
