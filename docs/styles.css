@@ -362,6 +362,18 @@ html[data-theme="light"] .dl pre {
   background: var(--bg-elev); border: 1px solid var(--border); font-weight: 500;
 }
 .shot figcaption { color: var(--fg-muted); font-size: 14px; margin-top: 10px; text-align: center; }
+.shot-frame {
+  display: block;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-alt);
+  box-shadow: var(--shadow-md);
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  aspect-ratio: 16 / 9;
+}
+.shot-frame img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
+.shot-frame:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: color-mix(in srgb, var(--accent) 50%, var(--border-strong)); }
 
 /* ───────── download ───────── */
 .download-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }

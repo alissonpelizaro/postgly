@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark light" />
 
   <title>Postgly — The PostgreSQL Client with a Natural-Language SQL Assistant</title>
-  <meta name="description" content="Postgly is a modern, local-first PostgreSQL desktop client with a built-in AI assistant that turns plain English (or Portuguese) into safe, schema-aware SQL. Free, open, cross-platform — macOS, Windows, Linux." />
+  <meta name="description" content="Postgly is a modern, local-first PostgreSQL desktop client with a built-in AI assistant that turns plain natural language into safe, schema-aware SQL. Free, open, cross-platform — macOS, Windows, Linux." />
   <meta name="keywords" content="Postgly, PostgreSQL client, Postgres GUI, free Postgres client, natural language SQL, AI SQL generator, text to SQL, LLM Postgres, OpenAI Postgres, Ollama Postgres, schema aware AI, Tauri Postgres app, desktop Postgres tool, Postgres explorer, macOS Postgres client, Windows Postgres client, Linux Postgres client, pgAdmin alternative, DBeaver alternative, TablePlus alternative, Postico alternative, SQL editor, query builder, database management, postgres rag, ai database client" />
   <meta name="author" content="Alisson Pelizaro" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -159,8 +159,8 @@
               <div class="mock-main">
                 <div class="mock-nlbar">
                   <span class="spark">✨</span>
-                  <span class="nl-text">vendas do trimestre por cliente, em ordem decrescente</span>
-                  <span class="mock-btn">Gerar</span>
+                  <span class="nl-text">quarterly sales per customer, in descending order</span>
+                  <span class="mock-btn">Generate</span>
                 </div>
                 <pre class="mock-code"><span class="kw">SELECT</span> u.name, <span class="fn">SUM</span>(o.total) <span class="kw">AS</span> total
 <span class="kw">FROM</span> orders o
@@ -217,7 +217,7 @@
                 <span>Ask in any language</span>
               </div>
               <div class="prompt-box">
-                <p>"todos os usuários cadastrados no mês passado"</p>
+                <p>"all users registered last month"</p>
               </div>
               <div class="arrow">↓</div>
               <pre class="code"><span class="kw">SELECT</span> * <span class="kw">FROM</span> public.users
@@ -248,46 +248,6 @@
 <span class="kw">LIMIT</span> 5;</pre>
             </div>
 
-            <div class="card prompt-card">
-              <div class="prompt-head">
-                <span class="spark">✨</span>
-                <span>Window functions &amp; CTEs</span>
-              </div>
-              <div class="prompt-box">
-                <p>"monthly active users with previous month and % change, last 6 months"</p>
-              </div>
-              <div class="arrow">↓</div>
-              <pre class="code"><span class="kw">WITH</span> monthly <span class="kw">AS</span> (
-  <span class="kw">SELECT</span> <span class="fn">date_trunc</span>(<span class="str">'month'</span>, e.created_at) <span class="kw">AS</span> month,
-         <span class="fn">COUNT</span>(<span class="kw">DISTINCT</span> e.user_id) <span class="kw">AS</span> mau
-  <span class="kw">FROM</span> events e
-  <span class="kw">WHERE</span> e.created_at &gt;= <span class="fn">now</span>() - <span class="kw">interval</span> <span class="str">'6 months'</span>
-  <span class="kw">GROUP BY</span> 1
-)
-<span class="kw">SELECT</span> month, mau,
-       <span class="fn">LAG</span>(mau) <span class="kw">OVER</span> (<span class="kw">ORDER BY</span> month) <span class="kw">AS</span> prev_mau,
-       <span class="fn">ROUND</span>(100.0 * (mau - <span class="fn">LAG</span>(mau) <span class="kw">OVER</span> (<span class="kw">ORDER BY</span> month))
-             / <span class="fn">NULLIF</span>(<span class="fn">LAG</span>(mau) <span class="kw">OVER</span> (<span class="kw">ORDER BY</span> month), 0), 1) <span class="kw">AS</span> pct_change
-<span class="kw">FROM</span> monthly
-<span class="kw">ORDER BY</span> month;</pre>
-            </div>
-
-            <div class="card prompt-card">
-              <div class="prompt-head">
-                <span class="spark">✨</span>
-                <span>Self-joins &amp; LEFT JOIN gaps</span>
-              </div>
-              <div class="prompt-box">
-                <p>"products that have never been ordered, with their category name"</p>
-              </div>
-              <div class="arrow">↓</div>
-              <pre class="code"><span class="kw">SELECT</span> p.id, p.name, cat.name <span class="kw">AS</span> category
-<span class="kw">FROM</span> products p
-<span class="kw">LEFT JOIN</span> categories cat <span class="kw">ON</span> cat.id = p.category_id
-<span class="kw">LEFT JOIN</span> order_items oi <span class="kw">ON</span> oi.product_id = p.id
-<span class="kw">WHERE</span> oi.id <span class="kw">IS NULL</span>
-<span class="kw">ORDER BY</span> cat.name, p.name;</pre>
-            </div>
           </div>
 
           <div class="ai-bullets">
@@ -304,7 +264,7 @@
             <div class="ai-bullet">
               <div class="ai-icon">🔁</div>
               <h3>Refine, retry, recall</h3>
-              <p>Keep context across turns with <em>Refinar</em>, browse session history, see live token usage. Nothing runs until you hit play.</p>
+              <p>Keep context across turns with <em>Refine</em>, browse session history, see live token usage. Nothing runs until you hit play.</p>
             </div>
             <div class="ai-bullet">
               <div class="ai-icon">🤝</div>
@@ -378,19 +338,27 @@
         </div>
         <div class="shots-grid">
           <figure class="shot">
-            <div class="shot-placeholder" data-label="Schema explorer + records grid"></div>
+            <a class="shot-frame" href="img/schema_explorer_records_grid.png" target="_blank" rel="noopener">
+              <img src="img/schema_explorer_records_grid.png" alt="Postgly schema explorer with records grid and quick-filter" loading="lazy" />
+            </a>
             <figcaption>Schema explorer with the records grid and quick-filter.</figcaption>
           </figure>
           <figure class="shot">
-            <div class="shot-placeholder" data-label="Natural-language SQL bar"></div>
+            <a class="shot-frame" href="img/natural_language_bar.png" target="_blank" rel="noopener">
+              <img src="img/natural_language_bar.png" alt="Postgly natural-language SQL bar above the editor" loading="lazy" />
+            </a>
             <figcaption>The ✨ bar above the SQL editor — ask, review, run.</figcaption>
           </figure>
           <figure class="shot">
-            <div class="shot-placeholder" data-label="Destructive-query confirmation"></div>
+            <a class="shot-frame" href="img/destructive_confirmation.png" target="_blank" rel="noopener">
+              <img src="img/destructive_confirmation.png" alt="Destructive-query confirmation modal with row estimate" loading="lazy" />
+            </a>
             <figcaption>Destructive operations stop for a row-estimate confirmation.</figcaption>
           </figure>
           <figure class="shot">
-            <div class="shot-placeholder" data-label="LLM settings"></div>
+            <a class="shot-frame" href="img/llm_settings.png" target="_blank" rel="noopener">
+              <img src="img/llm_settings.png" alt="Postgly LLM settings panel" loading="lazy" />
+            </a>
             <figcaption>Plug in any OpenAI-compatible endpoint in Settings → LLM Config.</figcaption>
           </figure>
         </div>
