@@ -6,6 +6,8 @@
 
 pub mod connections;
 pub mod explorer;
+pub mod llm;
+pub mod settings;
 
 use serde::Serialize;
 

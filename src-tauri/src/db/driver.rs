@@ -125,6 +125,66 @@ pub struct CellValue {
     pub value: Option<String>,
 }
 
+/// Kind of relation surfaced by schema introspection. Tables and views
+/// behave the same way for query generation; the distinction is kept so
+/// the UI / LLM can warn before issuing destructive operations on views.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RelationKind {
+    Table,
+    View,
+    MaterializedView,
+}
+
+/// One column inside a [`TableSchema`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColumnSchema {
+    pub name: String,
+    /// Canonical type name as the engine reports it (e.g. `text`, `int4`,
+    /// `varchar(255)`).
+    pub data_type: String,
+    pub nullable: bool,
+    pub default: Option<String>,
+    pub is_primary_key: bool,
+    /// Engine-side `COMMENT ON COLUMN`, when present.
+    pub comment: Option<String>,
+}
+
+/// A foreign-key constraint referencing another table.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForeignKeySchema {
+    /// Constraint name as reported by the engine.
+    pub name: String,
+    /// Columns on this table that participate in the FK, in order.
+    pub columns: Vec<String>,
+    pub ref_schema: String,
+    pub ref_table: String,
+    /// Referenced columns on the parent table, paired with `columns`.
+    pub ref_columns: Vec<String>,
+}
+
+/// One table or view as surfaced by schema introspection. Carries
+/// everything the LLM tool layer (Phase 4) needs to plan a query.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableSchema {
+    pub schema: String,
+    pub name: String,
+    pub kind: RelationKind,
+    pub comment: Option<String>,
+    pub columns: Vec<ColumnSchema>,
+    /// Primary-key columns, in declaration order. Empty when none.
+    pub primary_key: Vec<String>,
+    pub foreign_keys: Vec<ForeignKeySchema>,
+}
+
+/// Full schema view of a connection: every user schema with its tables
+/// and their structural detail. User schemas only — `pg_catalog`,
+/// `information_schema` and the like are filtered out by the driver.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseSchema {
+    pub tables: Vec<TableSchema>,
+}
+
 /// The contract every database engine must fulfil.
 ///
 /// Implementations own their own connection/pool. Methods are async and
@@ -151,6 +211,12 @@ pub trait DatabaseDriver: Send + Sync {
 
     /// Describe a table's columns and indexes.
     async fn describe_table(&self, schema: &str, table: &str) -> AppResult<TableDetails>;
+
+    /// Full schema introspection: every user table with columns, PKs,
+    /// FKs and comments. Used by the LLM tool layer to plan natural
+    /// language queries. Results are cached at the session level by the
+    /// caller, so this method should always do real work.
+    async fn introspect_schema(&self) -> AppResult<DatabaseSchema>;
 
     /// Run an arbitrary SQL statement.
     async fn execute(&self, sql: &str) -> AppResult<QueryResult>;

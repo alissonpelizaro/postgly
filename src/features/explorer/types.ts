@@ -77,3 +77,71 @@ export interface OrderBy {
   column: string;
   descending: boolean;
 }
+
+/** Outcome status emitted by the natural-language SQL agent. */
+export type AgentStatus = "ok" | "need_info" | "not_found" | "error";
+
+/** One observable step in the agent's reasoning trace. */
+export type TraceEvent =
+  | { kind: "tool_call"; name: string; arguments: unknown }
+  | { kind: "tool_result"; name: string; ok: boolean; result: unknown }
+  | { kind: "assistant_message"; content: string };
+
+/** Token accounting for an LLM exchange. Zeroed when the provider
+ *  didn't return usage data. */
+export interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+/** What `generate_sql` returns to the UI. */
+export interface AgentOutput {
+  status: AgentStatus;
+  sql?: string;
+  reason?: string;
+  /** Actionable hints surfaced when the model could not finish the
+   *  task: candidate table names, clarifying questions, etc. */
+  suggestions: string[];
+  trace: TraceEvent[];
+  usage: TokenUsage;
+}
+
+/** One past natural-language → SQL exchange for the session. */
+export interface NlHistoryEntry {
+  instruction: string;
+  output: AgentOutput;
+  /** Unix timestamp (seconds). */
+  created_at: number;
+}
+
+/** Kind of a single SQL statement, mirrored from the Rust classifier. */
+export type StatementKind =
+  | "select"
+  | "insert"
+  | "update"
+  | "delete"
+  | "drop"
+  | "truncate"
+  | "alter"
+  | "create"
+  | "other";
+
+export interface StatementInfo {
+  kind: StatementKind;
+  /** `true` when an UPDATE/DELETE carries a WHERE clause. */
+  has_where: boolean;
+  /** First ~140 chars of the statement, whitespace-collapsed. */
+  preview: string;
+}
+
+/** Result of `analyze_statement` — used by the destructive-SQL guard. */
+export interface StatementAnalysis {
+  statements: StatementInfo[];
+  destructive: boolean;
+  unbounded_dml: boolean;
+  /** Planner row estimate for the destructive DML, when available. */
+  estimated_rows: number | null;
+  /** Reason EXPLAIN failed, when it did. */
+  explain_error: string | null;
+}

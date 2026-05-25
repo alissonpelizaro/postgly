@@ -6,8 +6,41 @@ databases — fast, local and open. Built with **Tauri 2** (Rust) and
 
 ![Postgly](src/assets/postgly-logo.png)
 
+## ✨ Ask your database in plain English (or Portuguese)
+
+Postgly ships with a **natural-language SQL assistant**: describe what
+you want, the agent inspects your schema with real tool calls
+(`list_tables`, `describe_table`, `list_relations`, `sample_rows`) and
+hands back a SQL query you can review before running it.
+
+> *"todos os usuários cadastrados no mês passado"*
+> → `SELECT * FROM public.users WHERE created_at >= date_trunc('month', now() - interval '1 month') AND created_at < date_trunc('month', now());`
+
+- **Bring your own LLM.** Any OpenAI-compatible endpoint works — OpenAI,
+  Ollama, Groq, Together, etc. Configure base URL + API key in Settings;
+  the key lives in the OS keyring.
+- **Schema-aware.** The agent reads the live database structure
+  (columns, PKs, foreign keys, comments) before answering — no
+  hallucinated table or column names.
+- **Joins planned for you.** `list_relations` exposes FKs so multi-table
+  questions land as proper JOINs.
+- **Safe by default.** Destructive statements (`INSERT`/`UPDATE`/
+  `DELETE`/`DROP`/`TRUNCATE`/`ALTER`/`CREATE`) trigger a confirmation
+  modal with the planner's row estimate via `EXPLAIN`. Toggleable in
+  Settings → Segurança.
+- **Honest about failure.** When the model can't answer, it returns
+  `need_info` / `not_found` with a reason and clickable suggestions —
+  augmented by a local fuzzy match against your real table names.
+- **Refine, retry, recall.** Keep prior context with **Refinar**, browse
+  the per-session history popover, see live **token usage** for every
+  request.
+- **You decide when to execute.** Generated SQL drops into the editor;
+  nothing runs until you press play.
+
 ## Features
 
+- **🤖 Natural-language → SQL** with schema introspection, tool calls,
+  destructive-query guard, suggestions and per-session history.
 - **Multiple connections** — manage every database from one window, each
   open in its own tab.
 - **Schema explorer** — browse schemas, tables and views, inspect column
@@ -18,8 +51,8 @@ databases — fast, local and open. Built with **Tauri 2** (Rust) and
   dedicated JSON view.
 - **SQL editor** — syntax-highlighted free-form queries; run only the
   selected statement, with a per-session command history.
-- **Local & private** — connection passwords live in the OS keyring,
-  never in a plain file.
+- **Local & private** — connection passwords and LLM API keys live in
+  the OS keyring, never in a plain file.
 - **Light & dark themes**, following the system by default.
 
 ## Download & Install
@@ -80,6 +113,36 @@ chmod +x Postgly-linux-x86_64.AppImage
 sudo dpkg -i Postgly-linux-amd64.deb
 sudo apt-get install -f   # pull missing deps if any
 ```
+
+---
+
+## Using the natural-language SQL assistant
+
+1. Open **Settings → LLM Config** (header dropdown). Pick a provider
+   preset (OpenAI / Ollama / Custom), paste your base URL and API key,
+   set the model and click **Testar conexão**.
+2. *(Optional)* **Settings → Segurança** — keep "Sempre confirmar
+   operações destrutivas" enabled (default) for a confirmation modal +
+   `EXPLAIN`-based row estimate before any mutation runs.
+3. In any connection tab, switch the records pane to **SQL** mode. A
+   bar with the ✨ icon sits above the editor — type your request:
+
+   > *"vendas do trimestre por cliente, em ordem decrescente"*
+
+4. The agent will call schema tools (visible in the collapsible
+   "Raciocínio do agente" trace) and emit a JSON answer with one of:
+   - `ok` + the SQL — click **Editar** to drop it into the editor or
+     **Usar SQL** to replace the current statement, then run it from the
+     editor as usual.
+   - `need_info` — clarifying questions and example clauses you can
+     click to refine the prompt.
+   - `not_found` — table candidates ranked by fuzzy distance against
+     your real schema.
+5. Use **Refinar** to keep prior context and ask for a tweak, or the
+   **history** icon to revisit/restore any past prompt from the session.
+
+The full request budget is capped at 8 model turns and per-request
+token usage is shown alongside the result.
 
 ---
 
@@ -163,13 +226,17 @@ git tag v0.1.0 && git push origin v0.1.0
 src/                      Frontend (React)
   assets/                 brand logo
   components/
-    ui/                   shadcn/ui primitives (button, input, dialog, ...)
+    ui/                   shadcn/ui primitives (button, input, dialog,
+                          dropdown-menu, ...)
     theme-provider.tsx    light / dark / system theme state
     theme-toggle.tsx
   features/
     connections/          connection manager (list, form, IPC wrappers)
     explorer/             connected workspace (schema tree, structure,
-                          records grid, quick-filter, SQL editor)
+                          records grid, quick-filter, SQL editor,
+                          NlQueryBar, DestructiveConfirmDialog)
+    settings/             Settings shell + per-category panels
+                          (LLM Config, Segurança)
     tabs/                 global tab bar — one tab per open connection
   lib/                    shared helpers (cn, ...)
   App.tsx
@@ -178,13 +245,26 @@ src-tauri/                Backend (Rust / Tauri)
   src/
     commands/             Tauri command handlers (IPC surface)
       connections.rs      connection CRUD + test
-      explorer.rs         open/close session, schema/table introspection
+      explorer.rs         open/close session, schema introspection,
+                          analyze_statement (destructive guard)
+      llm.rs              generate_sql + nl_query_history
+      settings.rs         get/save settings, test_llm_config
     connections/          metadata store (JSON) + keyring helpers
     db/
       driver.rs           DatabaseDriver trait + DTOs
       postgres.rs         Postgres implementation (sqlx)
+      sql_safety.rs       statement classifier (destructive / WHERE-less)
+    llm/
+      chat.rs             OpenAI-compatible chat completions client +
+                          token usage
+      tools.rs            agent tool schemas (list_tables,
+                          describe_table, list_relations, sample_rows)
+      agent.rs            tool-use loop (8-turn budget, JSON contract)
+      fuzzy.rs            Levenshtein-based "did you mean" fallback
+    settings/             on-disk Settings (LLM + Safety) + keyring
+                          helpers for the LLM API key
     error.rs              AppError — the error type crossing IPC
-    state.rs              open-connection session registry
+    state.rs              session registry + schema cache + NL history
     lib.rs                Tauri builder / entry point
   tests/
     postgres_driver.rs    integration suite (gated by POSTGLY_TEST_DB_URL)
@@ -214,6 +294,7 @@ src-tauri/                Backend (Rust / Tauri)
 | 3     | Data grid, quick filter, SQL editor               ✅ |
 | 4     | Global tabs — work across multiple databases at once ✅ |
 | 5     | Polish, installers ✅ · auto-update + signing pending |
+| 6     | Natural-language SQL: schema-aware agent, destructive-query guard, suggestions, refine, per-session history, token usage ✅ |
 
 ## License
 

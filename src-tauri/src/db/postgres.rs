@@ -15,9 +15,12 @@ use async_trait::async_trait;
 use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions};
 use sqlx::{Column, Executor, Row};
 
+use std::collections::HashMap;
+
 use super::driver::{
-    CellValue, ColumnInfo, ConnectionConfig, DatabaseDriver, DatabaseKind, FilterOp, IndexInfo,
-    OrderBy, QueryResult, RowFilter, SchemaInfo, TableDetails, TableInfo,
+    CellValue, ColumnInfo, ColumnSchema, ConnectionConfig, DatabaseDriver, DatabaseKind,
+    DatabaseSchema, FilterOp, ForeignKeySchema, IndexInfo, OrderBy, QueryResult, RelationKind,
+    RowFilter, SchemaInfo, TableDetails, TableInfo, TableSchema,
 };
 use crate::error::{AppError, AppResult};
 
@@ -224,6 +227,208 @@ impl DatabaseDriver for PostgresDriver {
             .collect();
 
         Ok(TableDetails { columns, indexes })
+    }
+
+    async fn introspect_schema(&self) -> AppResult<DatabaseSchema> {
+        let pool = self.pool()?;
+
+        // Tables, views and materialized views in user-visible schemas.
+        // `obj_description(oid, 'pg_class')` carries the table comment.
+        let table_rows = sqlx::query(
+            "SELECT n.nspname::text AS schema, \
+                    c.relname::text AS name, \
+                    c.relkind::text AS relkind, \
+                    obj_description(c.oid, 'pg_class')::text AS comment \
+             FROM pg_class c \
+             JOIN pg_namespace n ON n.oid = c.relnamespace \
+             WHERE c.relkind IN ('r','v','m') \
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema') \
+               AND n.nspname NOT LIKE 'pg_toast%' \
+               AND n.nspname NOT LIKE 'pg_temp%' \
+             ORDER BY n.nspname, c.relname",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| AppError::Query(e.to_string()))?;
+
+        // Columns for every relation. `format_type` gives the canonical
+        // SQL type ("varchar(255)", "numeric(10,2)", ...).
+        // `pg_get_expr(d.adbin, d.adrelid)` renders the column default.
+        // `col_description(c.oid, a.attnum)` is the per-column comment.
+        let column_rows = sqlx::query(
+            "SELECT n.nspname::text AS schema, \
+                    c.relname::text AS table_name, \
+                    a.attname::text AS name, \
+                    a.attnum AS attnum, \
+                    format_type(a.atttypid, a.atttypmod)::text AS data_type, \
+                    a.attnotnull AS notnull, \
+                    pg_get_expr(d.adbin, d.adrelid)::text AS default_expr, \
+                    col_description(c.oid, a.attnum)::text AS comment \
+             FROM pg_class c \
+             JOIN pg_namespace n ON n.oid = c.relnamespace \
+             JOIN pg_attribute a ON a.attrelid = c.oid \
+             LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum \
+             WHERE c.relkind IN ('r','v','m') \
+               AND a.attnum > 0 AND NOT a.attisdropped \
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema') \
+               AND n.nspname NOT LIKE 'pg_toast%' \
+               AND n.nspname NOT LIKE 'pg_temp%' \
+             ORDER BY n.nspname, c.relname, a.attnum",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| AppError::Query(e.to_string()))?;
+
+        // Primary-key and foreign-key constraints. The two `pg_get_constraintdef`
+        // chunks aren't needed for the structured output but the attnum
+        // arrays let us resolve to column names via the columns map below.
+        let constraint_rows = sqlx::query(
+            "SELECT n.nspname::text  AS schema, \
+                    cl.relname::text AS table_name, \
+                    con.contype::text AS contype, \
+                    con.conname::text AS name, \
+                    con.conkey       AS conkey, \
+                    con.confkey      AS confkey, \
+                    fn.nspname::text AS ref_schema, \
+                    fcl.relname::text AS ref_table \
+             FROM pg_constraint con \
+             JOIN pg_class cl ON cl.oid = con.conrelid \
+             JOIN pg_namespace n ON n.oid = cl.relnamespace \
+             LEFT JOIN pg_class fcl ON fcl.oid = con.confrelid \
+             LEFT JOIN pg_namespace fn ON fn.oid = fcl.relnamespace \
+             WHERE con.contype IN ('p', 'f') \
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema') \
+             ORDER BY n.nspname, cl.relname, con.contype DESC, con.conname",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| AppError::Query(e.to_string()))?;
+
+        // Index columns by (schema, table) so we can both build TableSchemas
+        // and resolve constraint attnums to names. Postgres reports column
+        // positions as 1-based smallint arrays.
+        let mut columns_by_table: HashMap<(String, String), Vec<ColumnSchema>> = HashMap::new();
+        let mut column_name_by_attnum: HashMap<(String, String), HashMap<i16, String>> =
+            HashMap::new();
+        for row in &column_rows {
+            let schema: String = row.get("schema");
+            let table: String = row.get("table_name");
+            let name: String = row.get("name");
+            let attnum: i16 = row.get("attnum");
+            let notnull: bool = row.get("notnull");
+            let column = ColumnSchema {
+                name: name.clone(),
+                data_type: row.get("data_type"),
+                nullable: !notnull,
+                default: row.get("default_expr"),
+                is_primary_key: false,
+                comment: row.get("comment"),
+            };
+            columns_by_table
+                .entry((schema.clone(), table.clone()))
+                .or_default()
+                .push(column);
+            column_name_by_attnum
+                .entry((schema, table))
+                .or_default()
+                .insert(attnum, name);
+        }
+
+        // Primary keys first, then foreign keys. We track PKs separately
+        // so they get reflected in both `primary_key` and the `is_primary_key`
+        // column flag.
+        let mut pk_by_table: HashMap<(String, String), Vec<String>> = HashMap::new();
+        let mut fk_by_table: HashMap<(String, String), Vec<ForeignKeySchema>> = HashMap::new();
+        for row in constraint_rows {
+            let schema: String = row.get("schema");
+            let table: String = row.get("table_name");
+            let contype: String = row.get("contype");
+            let name: String = row.get("name");
+            let conkey: Vec<i16> = row.get("conkey");
+            let attnums = match column_name_by_attnum.get(&(schema.clone(), table.clone())) {
+                Some(m) => m,
+                None => continue,
+            };
+            let columns: Vec<String> = conkey
+                .iter()
+                .filter_map(|n| attnums.get(n).cloned())
+                .collect();
+            if columns.len() != conkey.len() {
+                // Constraint references a column we didn't see (dropped
+                // mid-introspection). Skip rather than emit a partial entry.
+                continue;
+            }
+
+            if contype == "p" {
+                pk_by_table.insert((schema, table), columns);
+            } else if contype == "f" {
+                let ref_schema: Option<String> = row.try_get("ref_schema").ok();
+                let ref_table: Option<String> = row.try_get("ref_table").ok();
+                let confkey: Option<Vec<i16>> = row.try_get("confkey").ok();
+                let (Some(ref_schema), Some(ref_table), Some(confkey)) =
+                    (ref_schema, ref_table, confkey)
+                else {
+                    continue;
+                };
+                let ref_attnums = match column_name_by_attnum
+                    .get(&(ref_schema.clone(), ref_table.clone()))
+                {
+                    Some(m) => m,
+                    None => continue,
+                };
+                let ref_columns: Vec<String> = confkey
+                    .iter()
+                    .filter_map(|n| ref_attnums.get(n).cloned())
+                    .collect();
+                if ref_columns.len() != confkey.len() {
+                    continue;
+                }
+                fk_by_table
+                    .entry((schema, table))
+                    .or_default()
+                    .push(ForeignKeySchema {
+                        name,
+                        columns,
+                        ref_schema,
+                        ref_table,
+                        ref_columns,
+                    });
+            }
+        }
+
+        let mut tables = Vec::with_capacity(table_rows.len());
+        for row in table_rows {
+            let schema: String = row.get("schema");
+            let name: String = row.get("name");
+            let relkind: String = row.get("relkind");
+            let kind = match relkind.as_str() {
+                "v" => RelationKind::View,
+                "m" => RelationKind::MaterializedView,
+                _ => RelationKind::Table,
+            };
+            let key = (schema.clone(), name.clone());
+            let mut columns = columns_by_table.remove(&key).unwrap_or_default();
+            let pk = pk_by_table.remove(&key).unwrap_or_default();
+            if !pk.is_empty() {
+                for column in &mut columns {
+                    if pk.iter().any(|n| n == &column.name) {
+                        column.is_primary_key = true;
+                    }
+                }
+            }
+            let foreign_keys = fk_by_table.remove(&key).unwrap_or_default();
+            tables.push(TableSchema {
+                schema,
+                name,
+                kind,
+                comment: row.get("comment"),
+                columns,
+                primary_key: pk,
+                foreign_keys,
+            });
+        }
+
+        Ok(DatabaseSchema { tables })
     }
 
     async fn execute(&self, sql: &str) -> AppResult<QueryResult> {

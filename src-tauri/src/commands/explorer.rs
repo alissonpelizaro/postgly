@@ -7,16 +7,17 @@ use crate::connections;
 use crate::db::{
     self,
     driver::{
-        CellValue, ConnectionConfig, OrderBy, QueryResult, RowFilter, SchemaInfo, TableDetails,
-        TableInfo,
+        CellValue, ConnectionConfig, DatabaseSchema, OrderBy, QueryResult, RowFilter, SchemaInfo,
+        TableDetails, TableInfo,
     },
+    sql_safety::{self, SqlAnalysis},
 };
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, Session};
 
 /// Look up a live session, cloning the `Arc` so the state lock is
 /// released before any `await`.
-fn session(state: &AppState, id: &str) -> AppResult<Session> {
+pub(crate) fn session_for(state: &AppState, id: &str) -> AppResult<Session> {
     state
         .sessions
         .lock()
@@ -65,11 +66,61 @@ pub async fn open_connection<R: tauri::Runtime>(
     Ok(session_id)
 }
 
-/// Close an open connection, dropping its pool.
+/// Close an open connection, dropping its pool, cached schema and NL history.
 #[tauri::command]
 pub fn close_connection(state: tauri::State<'_, AppState>, session_id: String) -> AppResult<()> {
     state
         .sessions
+        .lock()
+        .map_err(|_| AppError::Other("state lock poisoned".into()))?
+        .remove(&session_id);
+    state
+        .schema_cache
+        .lock()
+        .map_err(|_| AppError::Other("state lock poisoned".into()))?
+        .remove(&session_id);
+    state.clear_nl_history(&session_id);
+    Ok(())
+}
+
+/// Return the full schema (tables, columns, PKs, FKs, comments) for an
+/// open session, building and caching it on first access.
+#[tauri::command]
+pub async fn get_database_schema(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> AppResult<std::sync::Arc<DatabaseSchema>> {
+    // Cache hit: lock briefly, clone the Arc, done.
+    {
+        let cache = state
+            .schema_cache
+            .lock()
+            .map_err(|_| AppError::Other("state lock poisoned".into()))?;
+        if let Some(cached) = cache.get(&session_id) {
+            return Ok(cached.clone());
+        }
+    }
+
+    let driver = session_for(&state, &session_id)?;
+    let schema = std::sync::Arc::new(driver.introspect_schema().await?);
+
+    let mut cache = state
+        .schema_cache
+        .lock()
+        .map_err(|_| AppError::Other("state lock poisoned".into()))?;
+    cache.insert(session_id, schema.clone());
+    Ok(schema)
+}
+
+/// Drop the cached schema for a session so the next read re-introspects.
+/// Call after DDL or after the user explicitly clicks "refresh schema".
+#[tauri::command]
+pub fn refresh_database_schema(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> AppResult<()> {
+    state
+        .schema_cache
         .lock()
         .map_err(|_| AppError::Other("state lock poisoned".into()))?
         .remove(&session_id);
@@ -82,7 +133,7 @@ pub async fn list_schemas(
     state: tauri::State<'_, AppState>,
     session_id: String,
 ) -> AppResult<Vec<SchemaInfo>> {
-    session(&state, &session_id)?.list_schemas().await
+    session_for(&state, &session_id)?.list_schemas().await
 }
 
 /// List the tables and views inside a schema.
@@ -92,7 +143,7 @@ pub async fn list_tables(
     session_id: String,
     schema: String,
 ) -> AppResult<Vec<TableInfo>> {
-    session(&state, &session_id)?.list_tables(&schema).await
+    session_for(&state, &session_id)?.list_tables(&schema).await
 }
 
 /// Describe a table's columns and indexes.
@@ -103,9 +154,76 @@ pub async fn describe_table(
     schema: String,
     table: String,
 ) -> AppResult<TableDetails> {
-    session(&state, &session_id)?
+    session_for(&state, &session_id)?
         .describe_table(&schema, &table)
         .await
+}
+
+/// Inspect a SQL string without running it: classify each statement
+/// and, when destructive, ask Postgres for a row estimate via
+/// `EXPLAIN (FORMAT JSON)` so the UI can warn before execution.
+#[derive(Debug, serde::Serialize)]
+pub struct StatementAnalysis {
+    #[serde(flatten)]
+    pub analysis: SqlAnalysis,
+    /// Estimated rows the destructive statement would touch — `None`
+    /// when the planner refused the EXPLAIN (e.g. DDL) or when the SQL
+    /// isn't destructive.
+    pub estimated_rows: Option<f64>,
+    /// When `EXPLAIN` failed, the reason (so the UI can render it
+    /// alongside the confirmation modal rather than swallowing it).
+    pub explain_error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn analyze_statement(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    sql: String,
+) -> AppResult<StatementAnalysis> {
+    let analysis = sql_safety::analyze(&sql);
+
+    // Only probe the planner for actually destructive DML — DDL (DROP,
+    // ALTER, TRUNCATE, CREATE) refuses EXPLAIN in Postgres and we'd
+    // surface noise. SELECTs don't need a warning at all.
+    let is_dml = analysis.statements.iter().any(|s| {
+        matches!(
+            s.kind,
+            crate::db::sql_safety::StatementKind::Insert
+                | crate::db::sql_safety::StatementKind::Update
+                | crate::db::sql_safety::StatementKind::Delete
+        )
+    });
+
+    if !analysis.destructive || !is_dml {
+        return Ok(StatementAnalysis {
+            analysis,
+            estimated_rows: None,
+            explain_error: None,
+        });
+    }
+
+    let driver = session_for(&state, &session_id)?;
+    let trimmed = sql.trim().trim_end_matches(';');
+    let explain_sql = format!("EXPLAIN (FORMAT JSON) {trimmed}");
+    let (estimated_rows, explain_error) = match driver.execute(&explain_sql).await {
+        Ok(result) => (extract_plan_rows(&result), None),
+        Err(e) => (None, Some(e.to_string())),
+    };
+
+    Ok(StatementAnalysis {
+        analysis,
+        estimated_rows,
+        explain_error,
+    })
+}
+
+/// Pull `Plan.Plan Rows` from the first row of `EXPLAIN (FORMAT JSON)`.
+fn extract_plan_rows(result: &QueryResult) -> Option<f64> {
+    let raw = result.rows.first()?.first()?.as_ref()?;
+    let value: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let plan = value.get(0)?.get("Plan")?;
+    plan.get("Plan Rows").and_then(serde_json::Value::as_f64)
 }
 
 /// Run an arbitrary SQL statement from the editor.
@@ -115,7 +233,7 @@ pub async fn run_query(
     session_id: String,
     sql: String,
 ) -> AppResult<QueryResult> {
-    session(&state, &session_id)?.execute(&sql).await
+    session_for(&state, &session_id)?.execute(&sql).await
 }
 
 /// Update a single table row, addressed by its primary key.
@@ -128,7 +246,7 @@ pub async fn update_row(
     primary_key: Vec<CellValue>,
     changes: Vec<CellValue>,
 ) -> AppResult<QueryResult> {
-    session(&state, &session_id)?
+    session_for(&state, &session_id)?
         .update_row(&schema, &table, &primary_key, &changes)
         .await
 }
@@ -142,7 +260,7 @@ pub async fn insert_row(
     table: String,
     values: Vec<CellValue>,
 ) -> AppResult<QueryResult> {
-    session(&state, &session_id)?
+    session_for(&state, &session_id)?
         .insert_row(&schema, &table, &values)
         .await
 }
@@ -156,7 +274,7 @@ pub async fn delete_row(
     table: String,
     primary_key: Vec<CellValue>,
 ) -> AppResult<QueryResult> {
-    session(&state, &session_id)?
+    session_for(&state, &session_id)?
         .delete_row(&schema, &table, &primary_key)
         .await
 }
@@ -167,7 +285,7 @@ pub fn query_history(
     state: tauri::State<'_, AppState>,
     session_id: String,
 ) -> AppResult<Vec<String>> {
-    Ok(session(&state, &session_id)?.query_history())
+    Ok(session_for(&state, &session_id)?.query_history())
 }
 
 /// Browse a table's rows with an optional quick-filter, sort and pagination.
@@ -183,7 +301,7 @@ pub async fn browse_table(
     limit: i64,
     offset: i64,
 ) -> AppResult<QueryResult> {
-    session(&state, &session_id)?
+    session_for(&state, &session_id)?
         .browse_table(
             &schema,
             &table,
@@ -198,7 +316,7 @@ pub async fn browse_table(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::driver::{DatabaseKind, TableDetails};
+    use crate::db::driver::{DatabaseKind, RelationKind, TableDetails, TableSchema};
     use std::sync::Mutex;
     use tauri::Manager;
 
@@ -248,8 +366,33 @@ mod tests {
                 indexes: vec![],
             })
         }
+        async fn introspect_schema(&self) -> AppResult<DatabaseSchema> {
+            self.record("introspect_schema");
+            Ok(DatabaseSchema {
+                tables: vec![TableSchema {
+                    schema: "public".into(),
+                    name: "users".into(),
+                    kind: RelationKind::Table,
+                    comment: None,
+                    columns: vec![],
+                    primary_key: vec![],
+                    foreign_keys: vec![],
+                }],
+            })
+        }
         async fn execute(&self, sql: &str) -> AppResult<QueryResult> {
             self.record(format!("execute({sql})"));
+            if sql.trim_start().to_uppercase().starts_with("EXPLAIN") {
+                // Mimic Postgres' single-row JSON envelope so the
+                // analyze_statement extractor has something to read.
+                return Ok(QueryResult {
+                    columns: vec!["QUERY PLAN".into()],
+                    rows: vec![vec![Some(
+                        r#"[{"Plan":{"Plan Rows": 42}}]"#.into(),
+                    )]],
+                    rows_affected: 1,
+                });
+            }
             Ok(QueryResult {
                 columns: vec!["x".into()],
                 rows: vec![vec![Some("1".into())]],
@@ -331,7 +474,7 @@ mod tests {
     #[test]
     fn session_lookup_errors_when_id_unknown() {
         let state = AppState::default();
-        match session(&state, "missing") {
+        match session_for(&state, "missing") {
             Err(AppError::Connection(_)) => {}
             Err(e) => panic!("expected Connection error, got {e}"),
             Ok(_) => panic!("expected error, got Ok"),
@@ -346,7 +489,7 @@ mod tests {
             .lock()
             .unwrap()
             .insert("s".into(), std::sync::Arc::new(FakeDriver::default()));
-        assert!(session(&state, "s").ok().is_some());
+        assert!(session_for(&state, "s").ok().is_some());
     }
 
     #[tokio::test]
@@ -481,6 +624,151 @@ mod tests {
         let state = app.state::<AppState>();
         let err = list_schemas(state, "missing".into()).await.unwrap_err();
         assert!(matches!(err, AppError::Connection(_)));
+    }
+
+    #[tokio::test]
+    async fn analyze_statement_flags_select_as_safe_and_skips_explain() {
+        let app = app_with_session("s");
+        let view = analyze_statement(
+            app.state::<AppState>(),
+            "s".into(),
+            "SELECT * FROM users".into(),
+        )
+        .await
+        .unwrap();
+        assert!(!view.analysis.destructive);
+        assert!(!view.analysis.unbounded_dml);
+        assert!(view.estimated_rows.is_none());
+        assert!(view.explain_error.is_none());
+        // No execute call: SELECTs short-circuit before touching the driver.
+        let driver = session_for(&app.state::<AppState>(), "s").unwrap();
+        assert!(driver.query_history().iter().all(|c| !c.contains("execute")));
+    }
+
+    #[tokio::test]
+    async fn analyze_statement_runs_explain_for_destructive_dml() {
+        let app = app_with_session("s");
+        let view = analyze_statement(
+            app.state::<AppState>(),
+            "s".into(),
+            "DELETE FROM users WHERE id = 1".into(),
+        )
+        .await
+        .unwrap();
+        assert!(view.analysis.destructive);
+        assert!(!view.analysis.unbounded_dml);
+        assert_eq!(view.estimated_rows, Some(42.0));
+        assert!(view.explain_error.is_none());
+    }
+
+    #[tokio::test]
+    async fn analyze_statement_flags_unbounded_delete() {
+        let app = app_with_session("s");
+        let view = analyze_statement(
+            app.state::<AppState>(),
+            "s".into(),
+            "DELETE FROM users".into(),
+        )
+        .await
+        .unwrap();
+        assert!(view.analysis.destructive);
+        assert!(view.analysis.unbounded_dml);
+    }
+
+    #[tokio::test]
+    async fn analyze_statement_skips_explain_for_ddl() {
+        let app = app_with_session("s");
+        let view = analyze_statement(
+            app.state::<AppState>(),
+            "s".into(),
+            "DROP TABLE users".into(),
+        )
+        .await
+        .unwrap();
+        assert!(view.analysis.destructive);
+        // DDL doesn't EXPLAIN — caller should render "no estimate" instead
+        // of a noisy error.
+        assert!(view.estimated_rows.is_none());
+        assert!(view.explain_error.is_none());
+    }
+
+    #[tokio::test]
+    async fn analyze_statement_errors_when_session_unknown() {
+        let app = tauri::test::mock_builder()
+            .manage(AppState::default())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let err = analyze_statement(
+            app.state::<AppState>(),
+            "ghost".into(),
+            "DELETE FROM users".into(),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, AppError::Connection(_)));
+    }
+
+    #[tokio::test]
+    async fn get_database_schema_introspects_and_caches() {
+        let app = app_with_session("s");
+
+        // First call hits the driver.
+        let first = get_database_schema(app.state::<AppState>(), "s".into())
+            .await
+            .unwrap();
+        assert_eq!(first.tables.len(), 1);
+        assert_eq!(first.tables[0].name, "users");
+
+        // Second call returns the cached Arc — pointer equality proves
+        // we didn't re-introspect.
+        let second = get_database_schema(app.state::<AppState>(), "s".into())
+            .await
+            .unwrap();
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+    }
+
+    #[tokio::test]
+    async fn refresh_database_schema_invalidates_cache() {
+        let app = app_with_session("s");
+        let first = get_database_schema(app.state::<AppState>(), "s".into())
+            .await
+            .unwrap();
+
+        refresh_database_schema(app.state::<AppState>(), "s".into()).unwrap();
+
+        let second = get_database_schema(app.state::<AppState>(), "s".into())
+            .await
+            .unwrap();
+        // Different Arcs after invalidation — driver was queried again.
+        assert!(!std::sync::Arc::ptr_eq(&first, &second));
+    }
+
+    #[tokio::test]
+    async fn get_database_schema_errors_when_session_unknown() {
+        let app = tauri::test::mock_builder()
+            .manage(AppState::default())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let err = get_database_schema(app.state::<AppState>(), "missing".into())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::Connection(_)));
+    }
+
+    #[tokio::test]
+    async fn close_connection_evicts_cached_schema() {
+        let app = app_with_session("s");
+        // Warm the cache.
+        get_database_schema(app.state::<AppState>(), "s".into())
+            .await
+            .unwrap();
+        close_connection(app.state::<AppState>(), "s".into()).unwrap();
+        assert!(app
+            .state::<AppState>()
+            .schema_cache
+            .lock()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

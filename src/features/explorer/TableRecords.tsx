@@ -13,8 +13,12 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 
+import { settingsApi } from "@/features/settings/api";
+
 import { explorerApi } from "./api";
 import { CommandHistory } from "./CommandHistory";
+import { DestructiveConfirmDialog } from "./DestructiveConfirmDialog";
+import { NlQueryBar } from "./NlQueryBar";
 import { QuickFilter } from "./QuickFilter";
 import { RecordDialog } from "./RecordDialog";
 import { ResultGrid } from "./ResultGrid";
@@ -25,6 +29,7 @@ import type {
   OrderBy,
   QueryResult,
   RowFilter,
+  StatementAnalysis,
   TableRef,
 } from "./types";
 
@@ -59,6 +64,10 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
   const [sqlText, setSqlText] = useState(
     `SELECT * FROM "${table.schema}"."${table.name}" LIMIT 100;`,
   );
+  const [pendingGuard, setPendingGuard] = useState<{
+    sql: string;
+    analysis: StatementAnalysis | null;
+  } | null>(null);
 
   const pkColumns = useMemo(
     () => tableColumns.filter((c) => c.is_primary_key).map((c) => c.name),
@@ -136,19 +145,67 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
     void browse(filter, next, 0);
   };
 
+  const executeSql = useCallback(
+    async (sql: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        setResult(await explorerApi.runQuery(sessionId, sql));
+      } catch (e) {
+        setError(String(e));
+        setResult(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sessionId],
+  );
+
   const runSql = async () => {
     const sql = selectedSql.trim() || sqlText;
     if (!sql.trim()) return;
-    setLoading(true);
-    setError(null);
+
+    // Check the guard setting + analyse the statement. If the user has
+    // opted out of confirmations we go straight to execute.
+    let confirmDestructive = true;
     try {
-      setResult(await explorerApi.runQuery(sessionId, sql));
-    } catch (e) {
-      setError(String(e));
-      setResult(null);
-    } finally {
-      setLoading(false);
+      confirmDestructive = (await settingsApi.get()).safety.confirm_destructive;
+    } catch {
+      // Settings unavailable → fall back to the safe default (confirm).
     }
+
+    if (!confirmDestructive) {
+      await executeSql(sql);
+      return;
+    }
+
+    // Open the modal optimistically; populate analysis when it returns.
+    setPendingGuard({ sql, analysis: null });
+    try {
+      const analysis = await explorerApi.analyzeStatement(sessionId, sql);
+      if (!analysis.destructive) {
+        setPendingGuard(null);
+        await executeSql(sql);
+        return;
+      }
+      setPendingGuard({ sql, analysis });
+    } catch (e) {
+      // Analysis itself failed — surface as a regular error and skip
+      // execution. Better than silently running an unanalysed mutation.
+      setPendingGuard(null);
+      setError(String(e));
+    }
+  };
+
+  const confirmDestructiveRun = async () => {
+    if (!pendingGuard) return;
+    const sql = pendingGuard.sql;
+    setPendingGuard(null);
+    await executeSql(sql);
+  };
+
+  const cancelDestructiveRun = () => {
+    setPendingGuard(null);
   };
 
   // The primary key of a result row, for addressing it on update / delete.
@@ -227,6 +284,7 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
           />
         ) : (
           <div className="flex flex-col gap-2">
+            <NlQueryBar sessionId={sessionId} onAcceptSql={setSqlText} />
             <div className="h-40 overflow-hidden rounded-md border border-border">
               <SqlEditor
                 value={sqlText}
@@ -348,6 +406,17 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
           onClose={() => setShowHistory(false)}
         />
       )}
+
+      <DestructiveConfirmDialog
+        open={pendingGuard !== null}
+        onOpenChange={(open) => {
+          if (!open) cancelDestructiveRun();
+        }}
+        analysis={pendingGuard?.analysis ?? null}
+        running={loading}
+        onCancel={cancelDestructiveRun}
+        onConfirm={confirmDestructiveRun}
+      />
     </div>
   );
 }
