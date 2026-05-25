@@ -102,7 +102,11 @@ pub struct ToolDef {
 }
 
 impl ToolDef {
-    pub fn function(name: impl Into<String>, description: impl Into<String>, parameters: Value) -> Self {
+    pub fn function(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: Value,
+    ) -> Self {
         Self {
             kind: "function",
             function: FunctionDef {
@@ -212,13 +216,18 @@ impl<'a> ChatClient<'a> {
             return Err(AppError::Connection(format!(
                 "HTTP {}: {}",
                 status.as_u16(),
-                if snippet.is_empty() { "no body" } else { &snippet }
+                if snippet.is_empty() {
+                    "no body"
+                } else {
+                    &snippet
+                }
             )));
         }
 
-        response.json::<ChatResponse>().await.map_err(|e| {
-            AppError::Connection(format!("invalid chat completions response: {e}"))
-        })
+        response
+            .json::<ChatResponse>()
+            .await
+            .map_err(|e| AppError::Connection(format!("invalid chat completions response: {e}")))
     }
 }
 

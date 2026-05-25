@@ -106,9 +106,9 @@ pub fn analyze(sql: &str) -> SqlAnalysis {
         .collect();
 
     let destructive = statements.iter().any(|s| s.kind.is_destructive());
-    let unbounded_dml = statements.iter().any(|s| {
-        matches!(s.kind, StatementKind::Update | StatementKind::Delete) && !s.has_where
-    });
+    let unbounded_dml = statements
+        .iter()
+        .any(|s| matches!(s.kind, StatementKind::Update | StatementKind::Delete) && !s.has_where);
 
     SqlAnalysis {
         statements,
@@ -228,8 +228,7 @@ fn contains_keyword(lower: &str, keyword: &str) -> bool {
     while i + kw.len() <= bytes.len() {
         if &bytes[i..i + kw.len()] == kw {
             let before_ok = i == 0 || !is_ident_byte(bytes[i - 1]);
-            let after_ok =
-                i + kw.len() == bytes.len() || !is_ident_byte(bytes[i + kw.len()]);
+            let after_ok = i + kw.len() == bytes.len() || !is_ident_byte(bytes[i + kw.len()]);
             if before_ok && after_ok {
                 return true;
             }
@@ -244,10 +243,7 @@ fn is_ident_byte(b: u8) -> bool {
 }
 
 fn preview(stmt: &str) -> String {
-    let collapsed: String = stmt
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let collapsed: String = stmt.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.chars().count() <= 140 {
         collapsed
     } else {
@@ -311,10 +307,10 @@ mod tests {
     #[test]
     fn batch_with_mixed_statements_flags_destructive_overall() {
         let a = analyze("SELECT 1; DELETE FROM users WHERE id = 1;");
-        assert_eq!(kinds("SELECT 1; DELETE FROM users WHERE id = 1;"), vec![
-            StatementKind::Select,
-            StatementKind::Delete,
-        ]);
+        assert_eq!(
+            kinds("SELECT 1; DELETE FROM users WHERE id = 1;"),
+            vec![StatementKind::Select, StatementKind::Delete,]
+        );
         assert!(a.destructive);
         assert!(!a.unbounded_dml);
     }

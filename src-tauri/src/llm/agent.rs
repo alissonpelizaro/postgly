@@ -161,9 +161,8 @@ pub async fn run(
                 let args: Value = if call.function.arguments.trim().is_empty() {
                     Value::Object(serde_json::Map::new())
                 } else {
-                    serde_json::from_str(&call.function.arguments).unwrap_or_else(|_| {
-                        Value::Object(serde_json::Map::new())
-                    })
+                    serde_json::from_str(&call.function.arguments)
+                        .unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
                 };
                 trace.push(TraceEvent::ToolCall {
                     name: call.function.name.clone(),
@@ -257,7 +256,10 @@ fn strip_code_fence(s: &str) -> String {
     if !s.starts_with("```") {
         return s.to_string();
     }
-    let after_open = s.trim_start_matches("```").trim_start_matches("json").trim_start();
+    let after_open = s
+        .trim_start_matches("```")
+        .trim_start_matches("json")
+        .trim_start();
     after_open.trim_end_matches("```").trim().to_string()
 }
 
@@ -368,8 +370,7 @@ mod tests {
 
     #[test]
     fn extract_first_json_object_skips_braces_inside_strings() {
-        let extracted =
-            extract_first_json_object("noise {\"a\":\"}\",\"b\":1} trailing").unwrap();
+        let extracted = extract_first_json_object("noise {\"a\":\"}\",\"b\":1} trailing").unwrap();
         assert_eq!(extracted, "{\"a\":\"}\",\"b\":1}");
     }
 
@@ -405,10 +406,7 @@ mod tests {
     #[async_trait]
     impl crate::llm::tools::ToolExecutor for ScriptedExecutor {
         async fn execute(&self, _name: &str, _args: Value) -> AppResult<Value> {
-            self.responses
-                .lock()
-                .unwrap()
-                .remove(0)
+            self.responses.lock().unwrap().remove(0)
         }
     }
 
@@ -475,10 +473,10 @@ mod tests {
 
         assert_eq!(out.status, AgentStatus::NotFound);
         // The failed tool result is on the trace with ok=false.
-        assert!(out.trace.iter().any(|e| matches!(
-            e,
-            TraceEvent::ToolResult { ok: false, .. }
-        )));
+        assert!(out
+            .trace
+            .iter()
+            .any(|e| matches!(e, TraceEvent::ToolResult { ok: false, .. })));
     }
 
     #[tokio::test]
@@ -505,9 +503,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let executor = ScriptedExecutor::new(
-            (0..MAX_STEPS).map(|_| Ok(json!({"tables": []}))).collect(),
-        );
+        let executor =
+            ScriptedExecutor::new((0..MAX_STEPS).map(|_| Ok(json!({"tables": []}))).collect());
         let url = format!("{}/v1", server.uri());
         let client = ChatClient::new(&url, "sk");
 
@@ -528,11 +525,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(out.status, AgentStatus::Error);
-        assert!(out
-            .reason
-            .as_deref()
-            .unwrap_or("")
-            .contains("exceeded"));
+        assert!(out.reason.as_deref().unwrap_or("").contains("exceeded"));
     }
 
     #[tokio::test]
@@ -582,7 +575,11 @@ mod tests {
 
         let out = run(
             &client,
-            vec![ToolDef::function("list_tables", "", json!({"type":"object"}))],
+            vec![ToolDef::function(
+                "list_tables",
+                "",
+                json!({"type":"object"}),
+            )],
             &executor,
             "m",
             0.0,

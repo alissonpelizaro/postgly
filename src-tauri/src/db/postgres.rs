@@ -370,12 +370,11 @@ impl DatabaseDriver for PostgresDriver {
                 else {
                     continue;
                 };
-                let ref_attnums = match column_name_by_attnum
-                    .get(&(ref_schema.clone(), ref_table.clone()))
-                {
-                    Some(m) => m,
-                    None => continue,
-                };
+                let ref_attnums =
+                    match column_name_by_attnum.get(&(ref_schema.clone(), ref_table.clone())) {
+                        Some(m) => m,
+                        None => continue,
+                    };
                 let ref_columns: Vec<String> = confkey
                     .iter()
                     .filter_map(|n| ref_attnums.get(n).cloned())

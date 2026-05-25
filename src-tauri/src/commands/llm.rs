@@ -149,12 +149,23 @@ mod tests {
         fn kind(&self) -> DatabaseKind {
             DatabaseKind::Postgres
         }
-        async fn connect(&mut self, _: &ConnectionConfig) -> AppResult<()> { Ok(()) }
-        async fn ping(&self) -> AppResult<()> { Ok(()) }
-        async fn list_schemas(&self) -> AppResult<Vec<SchemaInfo>> { Ok(vec![]) }
-        async fn list_tables(&self, _: &str) -> AppResult<Vec<TableInfo>> { Ok(vec![]) }
+        async fn connect(&mut self, _: &ConnectionConfig) -> AppResult<()> {
+            Ok(())
+        }
+        async fn ping(&self) -> AppResult<()> {
+            Ok(())
+        }
+        async fn list_schemas(&self) -> AppResult<Vec<SchemaInfo>> {
+            Ok(vec![])
+        }
+        async fn list_tables(&self, _: &str) -> AppResult<Vec<TableInfo>> {
+            Ok(vec![])
+        }
         async fn describe_table(&self, _: &str, _: &str) -> AppResult<TableDetails> {
-            Ok(TableDetails { columns: vec![], indexes: vec![] })
+            Ok(TableDetails {
+                columns: vec![],
+                indexes: vec![],
+            })
         }
         async fn introspect_schema(&self) -> AppResult<DatabaseSchema> {
             Ok(DatabaseSchema {
@@ -186,15 +197,36 @@ mod tests {
         }
         async fn browse_table(
             &self,
-            _: &str, _: &str,
-            _: Option<&RowFilter>, _: Option<&OrderBy>,
-            _: i64, _: i64,
-        ) -> AppResult<QueryResult> { Ok(empty_result()) }
-        async fn update_row(&self, _: &str, _: &str, _: &[CellValue], _: &[CellValue]) -> AppResult<QueryResult> { Ok(empty_result()) }
-        async fn insert_row(&self, _: &str, _: &str, _: &[CellValue]) -> AppResult<QueryResult> { Ok(empty_result()) }
-        async fn delete_row(&self, _: &str, _: &str, _: &[CellValue]) -> AppResult<QueryResult> { Ok(empty_result()) }
-        fn query_history(&self) -> Vec<String> { vec![] }
-        async fn disconnect(&mut self) -> AppResult<()> { Ok(()) }
+            _: &str,
+            _: &str,
+            _: Option<&RowFilter>,
+            _: Option<&OrderBy>,
+            _: i64,
+            _: i64,
+        ) -> AppResult<QueryResult> {
+            Ok(empty_result())
+        }
+        async fn update_row(
+            &self,
+            _: &str,
+            _: &str,
+            _: &[CellValue],
+            _: &[CellValue],
+        ) -> AppResult<QueryResult> {
+            Ok(empty_result())
+        }
+        async fn insert_row(&self, _: &str, _: &str, _: &[CellValue]) -> AppResult<QueryResult> {
+            Ok(empty_result())
+        }
+        async fn delete_row(&self, _: &str, _: &str, _: &[CellValue]) -> AppResult<QueryResult> {
+            Ok(empty_result())
+        }
+        fn query_history(&self) -> Vec<String> {
+            vec![]
+        }
+        async fn disconnect(&mut self) -> AppResult<()> {
+            Ok(())
+        }
     }
 
     use crate::db::driver::ColumnSchema;
