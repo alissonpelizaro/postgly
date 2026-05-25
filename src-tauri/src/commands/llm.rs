@@ -199,7 +199,10 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
         .map(|t| t.clamp(0.0, 2.0))
         .unwrap_or(cfg.temperature);
 
-    let bound = connection_session_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let bound = connection_session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
 
     let system_prompt = if bound.is_some() {
         conversational_system_prompt_with_tools()
@@ -371,7 +374,11 @@ pub async fn agent_generate_title<R: tauri::Runtime>(
     // Cap the history we send: a few turns is plenty for a title and
     // keeps the call cheap.
     for turn in user_turns.iter().take(6) {
-        let role = if turn.role == "assistant" { Role::Assistant } else { Role::User };
+        let role = if turn.role == "assistant" {
+            Role::Assistant
+        } else {
+            Role::User
+        };
         messages.push(ChatMessage {
             role,
             content: Some(turn.content.clone()),
@@ -380,9 +387,7 @@ pub async fn agent_generate_title<R: tauri::Runtime>(
             name: None,
         });
     }
-    messages.push(ChatMessage::user(
-        "Reply with the title only, 3-6 words.",
-    ));
+    messages.push(ChatMessage::user("Reply with the title only, 3-6 words."));
 
     let client = ChatClient::new(&cfg.base_url, &api_key);
     let request = ChatRequest {
@@ -410,7 +415,9 @@ pub async fn agent_generate_title<R: tauri::Runtime>(
 fn clean_title(raw: &str) -> String {
     let mut s = raw.trim().to_string();
     // Strip a "Title:" / "Título:" prefix the model sometimes adds.
-    for prefix in ["Title:", "title:", "Título:", "título:", "Titulo:", "titulo:"] {
+    for prefix in [
+        "Title:", "title:", "Título:", "título:", "Titulo:", "titulo:",
+    ] {
         if let Some(rest) = s.strip_prefix(prefix) {
             s = rest.trim().to_string();
         }
