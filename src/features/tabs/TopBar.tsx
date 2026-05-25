@@ -1,24 +1,38 @@
-import { Database, LayoutGrid, X } from "lucide-react";
+import { Database, LayoutGrid, Menu, Settings as SettingsIcon, X } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 import type { WorkspaceTab } from "./types";
 
 interface TopBarProps {
   tabs: WorkspaceTab[];
-  /** `null` selects the connection manager (home). */
+  /** `null` selects the connection manager; `"settings"` selects Settings. */
   activeId: string | null;
   onSelect: (id: string | null) => void;
   onClose: (id: string) => void;
+  onOpenSettings: () => void;
 }
 
 /**
  * The always-present top chrome: a home button for the connection
- * manager, one chip per open connection, and the theme toggle. Switching
- * tabs never unmounts them, so each keeps its own state.
+ * manager, one chip per open connection, the theme toggle, and an app
+ * menu (settings, etc.). Switching tabs never unmounts them, so each
+ * keeps its own state.
  */
-export function TopBar({ tabs, activeId, onSelect, onClose }: TopBarProps) {
+export function TopBar({
+  tabs,
+  activeId,
+  onSelect,
+  onClose,
+  onOpenSettings,
+}: TopBarProps) {
   return (
     <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-sidebar px-2">
       <HomeButton active={activeId === null} onClick={() => onSelect(null)} />
@@ -38,6 +52,7 @@ export function TopBar({ tabs, activeId, onSelect, onClose }: TopBarProps) {
       </div>
 
       <ThemeToggle />
+      <AppMenu onOpenSettings={onOpenSettings} />
     </div>
   );
 }
@@ -97,5 +112,29 @@ function ConnectionTab({ tab, active, onSelect, onClose }: ConnectionTabProps) {
         <X className="size-3.5" />
       </button>
     </div>
+  );
+}
+
+interface AppMenuProps {
+  onOpenSettings: () => void;
+}
+
+/** Header dropdown with app-wide actions. */
+function AppMenu({ onOpenSettings }: AppMenuProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Menu"
+        className="ml-1 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+      >
+        <Menu className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onOpenSettings}>
+          <SettingsIcon className="size-4" />
+          Configurações
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -3,6 +3,7 @@
 
 pub mod driver;
 pub mod postgres;
+pub mod sql_safety;
 
 pub use driver::{DatabaseDriver, DatabaseKind};
 

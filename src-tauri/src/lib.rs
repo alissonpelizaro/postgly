@@ -4,6 +4,8 @@ pub mod commands;
 pub mod connections;
 pub mod db;
 pub mod error;
+pub mod llm;
+pub mod settings;
 pub mod state;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -28,6 +30,16 @@ pub fn run() {
             commands::explorer::insert_row,
             commands::explorer::delete_row,
             commands::explorer::query_history,
+            commands::explorer::get_database_schema,
+            commands::explorer::refresh_database_schema,
+            commands::settings::get_settings,
+            commands::settings::save_llm_config,
+            commands::settings::clear_llm_api_key,
+            commands::settings::test_llm_config,
+            commands::settings::save_safety_config,
+            commands::explorer::analyze_statement,
+            commands::llm::generate_sql,
+            commands::llm::nl_query_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

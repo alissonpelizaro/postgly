@@ -3,16 +3,21 @@ import { useEffect, useState } from "react";
 import { ConnectionsScreen } from "@/features/connections/ConnectionsScreen";
 import type { ConnectionMeta } from "@/features/connections/types";
 import { ExplorerScreen } from "@/features/explorer/ExplorerScreen";
+import { SettingsScreen } from "@/features/settings/SettingsScreen";
 import { TopBar } from "@/features/tabs/TopBar";
 import type { WorkspaceTab } from "@/features/tabs/types";
 import { cn } from "@/lib/utils";
+
+/** Reserved `activeId` value for the Settings pane. */
+const SETTINGS_VIEW = "settings";
 
 /**
  * Root component and tab orchestrator.
  *
  * Every open connection is a tab; the connection manager is the "home"
- * view (`activeId === null`). All tabs stay mounted and are toggled with
- * CSS, so switching tabs never loses a tab's session or state.
+ * view (`activeId === null`) and Settings is a pseudo-tab keyed by
+ * [`SETTINGS_VIEW`]. All views stay mounted and are toggled with CSS, so
+ * switching never loses state.
  */
 function App() {
   const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
@@ -60,11 +65,15 @@ function App() {
         activeId={activeId}
         onSelect={setActiveId}
         onClose={closeTab}
+        onOpenSettings={() => setActiveId(SETTINGS_VIEW)}
       />
 
       <div className="min-h-0 flex-1">
         <Pane visible={activeId === null}>
           <ConnectionsScreen onConnect={openTab} />
+        </Pane>
+        <Pane visible={activeId === SETTINGS_VIEW}>
+          <SettingsScreen />
         </Pane>
         {tabs.map((tab) => (
           <Pane key={tab.id} visible={tab.id === activeId}>

@@ -1,11 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type {
+  AgentOutput,
   CellValue,
+  NlHistoryEntry,
   OrderBy,
   QueryResult,
   RowFilter,
   SchemaInfo,
+  StatementAnalysis,
   TableDetails,
   TableInfo,
 } from "./types";
@@ -78,6 +81,23 @@ export const explorerApi = {
   /** The statements run this session, oldest first. */
   queryHistory: (sessionId: string) =>
     invoke<string[]>("query_history", { sessionId }),
+
+  /** Turn a natural-language instruction into SQL via the configured LLM. */
+  generateSql: (sessionId: string, instruction: string) =>
+    invoke<AgentOutput>("generate_sql", { sessionId, instruction }),
+
+  /** Snapshot the session's NL → SQL history, newest first. */
+  nlQueryHistory: (sessionId: string) =>
+    invoke<NlHistoryEntry[]>("nl_query_history", { sessionId }),
+
+  /** Drop the cached schema for a session — call after DDL. */
+  refreshDatabaseSchema: (sessionId: string) =>
+    invoke<void>("refresh_database_schema", { sessionId }),
+
+  /** Classify a SQL string and (for destructive DML) ask Postgres for a
+   *  row estimate via EXPLAIN. Used by the destructive-SQL guard. */
+  analyzeStatement: (sessionId: string, sql: string) =>
+    invoke<StatementAnalysis>("analyze_statement", { sessionId, sql }),
 
   /** Browse a table's rows with an optional quick-filter, sort and pagination. */
   browseTable: (

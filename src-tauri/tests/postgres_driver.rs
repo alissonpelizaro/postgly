@@ -343,3 +343,54 @@ db_test!(execute_with_returning_takes_row_returning_path, db, {
     assert_eq!(res.rows[0][0].as_deref(), Some("1"));
     db.run("DROP TABLE pg_drv_returning").await;
 });
+
+db_test!(introspect_schema_returns_columns_pk_fk_and_comments, db, {
+    db.run("DROP TABLE IF EXISTS pg_drv_order").await;
+    db.run("DROP TABLE IF EXISTS pg_drv_customer").await;
+    db.run("CREATE TABLE pg_drv_customer (id serial PRIMARY KEY, name text NOT NULL)")
+        .await;
+    db.run(
+        "CREATE TABLE pg_drv_order (\
+         id serial PRIMARY KEY,\
+         customer_id int NOT NULL REFERENCES pg_drv_customer(id),\
+         total numeric(10,2) DEFAULT 0)",
+    )
+    .await;
+    db.run("COMMENT ON TABLE pg_drv_order IS 'orders placed by customers'")
+        .await;
+    db.run("COMMENT ON COLUMN pg_drv_order.total IS 'value in BRL'")
+        .await;
+
+    let schema = db.driver.introspect_schema().await.unwrap();
+
+    let order = schema
+        .tables
+        .iter()
+        .find(|t| t.schema == "public" && t.name == "pg_drv_order")
+        .expect("order table present");
+    assert_eq!(order.comment.as_deref(), Some("orders placed by customers"));
+    assert_eq!(order.primary_key, vec!["id".to_string()]);
+
+    let id_col = order.columns.iter().find(|c| c.name == "id").unwrap();
+    assert!(id_col.is_primary_key);
+    let total_col = order.columns.iter().find(|c| c.name == "total").unwrap();
+    assert!(total_col.data_type.starts_with("numeric"));
+    assert!(total_col.default.as_deref().unwrap_or("").contains('0'));
+    assert_eq!(total_col.comment.as_deref(), Some("value in BRL"));
+
+    assert_eq!(order.foreign_keys.len(), 1);
+    let fk = &order.foreign_keys[0];
+    assert_eq!(fk.columns, vec!["customer_id".to_string()]);
+    assert_eq!(fk.ref_schema, "public");
+    assert_eq!(fk.ref_table, "pg_drv_customer");
+    assert_eq!(fk.ref_columns, vec!["id".to_string()]);
+
+    // System schemas are filtered out.
+    assert!(schema
+        .tables
+        .iter()
+        .all(|t| t.schema != "pg_catalog" && t.schema != "information_schema"));
+
+    db.run("DROP TABLE pg_drv_order").await;
+    db.run("DROP TABLE pg_drv_customer").await;
+});
