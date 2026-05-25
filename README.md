@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/assets/postgly-logo.png" alt="Postgly" width="376" />
+<img src="src/assets/postgly-logo-named.png" alt="Postgly" width="376" />
 
 # Postgly
 
