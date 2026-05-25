@@ -1,113 +1,96 @@
+<div align="center">
+
+<img src="src/assets/postgly-logo.png" alt="Postgly" width="376" />
+
 # Postgly
 
-A modern, cross-platform desktop app for managing multiple PostgreSQL
-databases — fast, local and open. Built with **Tauri 2** (Rust) and
-**React + TypeScript**.
+**The modern, local-first PostgreSQL client — now with a natural-language SQL assistant.**
 
-![Postgly](src/assets/postgly-logo.png)
+Fast, open, cross-platform. Built with **Tauri 2** (Rust) + **React + TypeScript**.
+
+[![Latest release](https://img.shields.io/github/v/release/alissonpelizaro/postgly?style=flat-square)](https://github.com/alissonpelizaro/postgly/releases/latest)
+[![License](https://img.shields.io/badge/license-Private-lightgrey?style=flat-square)](#license)
+
+### ⬇️ Download
+
+[**macOS — Apple Silicon**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-arm64.dmg) ·
+[**macOS — Intel**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-x64.dmg) ·
+[**Windows (.exe)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64-setup.exe) ·
+[**Linux (.AppImage)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-x86_64.AppImage) ·
+[**Linux (.deb)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-amd64.deb)
+
+All builds on the [Releases page](https://github.com/alissonpelizaro/postgly/releases). See [install notes](#install-notes) below.
+
+</div>
+
+---
 
 ## ✨ Ask your database in plain English (or Portuguese)
 
-Postgly ships with a **natural-language SQL assistant**: describe what
-you want, the agent inspects your schema with real tool calls
-(`list_tables`, `describe_table`, `list_relations`, `sample_rows`) and
-hands back a SQL query you can review before running it.
+Postgly ships with a **natural-language SQL assistant**. Describe what you want; the agent inspects your live schema with real tool calls (`list_tables`, `describe_table`, `list_relations`, `sample_rows`) and hands back a query you can review before running.
 
 > *"todos os usuários cadastrados no mês passado"*
 > → `SELECT * FROM public.users WHERE created_at >= date_trunc('month', now() - interval '1 month') AND created_at < date_trunc('month', now());`
 
-- **Bring your own LLM.** Any OpenAI-compatible endpoint works — OpenAI,
-  Ollama, Groq, Together, etc. Configure base URL + API key in Settings;
-  the key lives in the OS keyring.
-- **Schema-aware.** The agent reads the live database structure
-  (columns, PKs, foreign keys, comments) before answering — no
-  hallucinated table or column names.
-- **Joins planned for you.** `list_relations` exposes FKs so multi-table
-  questions land as proper JOINs.
-- **Safe by default.** Destructive statements (`INSERT`/`UPDATE`/
-  `DELETE`/`DROP`/`TRUNCATE`/`ALTER`/`CREATE`) trigger a confirmation
-  modal with the planner's row estimate via `EXPLAIN`. Toggleable in
-  Settings → Segurança.
-- **Honest about failure.** When the model can't answer, it returns
-  `need_info` / `not_found` with a reason and clickable suggestions —
-  augmented by a local fuzzy match against your real table names.
-- **Refine, retry, recall.** Keep prior context with **Refinar**, browse
-  the per-session history popover, see live **token usage** for every
-  request.
-- **You decide when to execute.** Generated SQL drops into the editor;
-  nothing runs until you press play.
+- 🧠 **Bring your own LLM** — any OpenAI-compatible endpoint (OpenAI, Ollama, Groq, Together, …). API key lives in the OS keyring.
+- 🔍 **Schema-aware** — reads live columns, PKs, FKs and comments. No hallucinated names.
+- 🔗 **Joins planned for you** — FKs surfaced via `list_relations`, multi-table questions land as proper JOINs.
+- 🛡 **Safe by default** — destructive statements trigger a confirmation modal with `EXPLAIN`-based row estimate.
+- 🤝 **Honest about failure** — falls back to `need_info` / `not_found` with reasons, clickable suggestions and fuzzy table matches.
+- 🔁 **Refine, retry, recall** — keep context with **Refinar**, browse session history, see live **token usage** per request.
+- ▶️ **You decide when to execute** — SQL drops into the editor; nothing runs until you press play.
 
-## Features
+---
 
-- **🤖 Natural-language → SQL** with schema introspection, tool calls,
-  destructive-query guard, suggestions and per-session history.
-- **Multiple connections** — manage every database from one window, each
-  open in its own tab.
-- **Schema explorer** — browse schemas, tables and views, inspect column
-  and index structure.
-- **Records grid** — browse rows with a quick-filter, sort by any column
-  and paginate through results.
-- **Edit, insert and delete** rows directly; JSON / JSONB columns get a
-  dedicated JSON view.
-- **SQL editor** — syntax-highlighted free-form queries; run only the
-  selected statement, with a per-session command history.
-- **Local & private** — connection passwords and LLM API keys live in
-  the OS keyring, never in a plain file.
-- **Light & dark themes**, following the system by default.
+## 🚀 Features
 
-## Download & Install
+| | |
+|---|---|
+| 🤖 **NL → SQL** | Schema introspection, tool calls, destructive guard, suggestions, per-session history |
+| 🗂 **Multiple connections** | Every database in its own tab — switch instantly |
+| 🌳 **Schema explorer** | Browse schemas, tables, views; inspect columns & indexes |
+| 📊 **Records grid** | Quick-filter, sort by any column, paginated browsing |
+| ✏️ **Edit · Insert · Delete** | Row-level edits inline; dedicated JSON / JSONB view |
+| 💻 **SQL editor** | Syntax-highlighted, run-selection, per-session command history |
+| 🔐 **Local & private** | Passwords + LLM API keys in the OS keyring — never on disk in plain text |
+| 🌓 **Light & dark themes** | Follows the system by default |
 
-Installers are currently **unsigned** — macOS and Windows will warn on
-first launch. Code signing / notarization is planned. All builds are
-listed on the [Releases page](https://github.com/alissonpelizaro/postgly/releases).
+**Shortcuts:** `Cmd/Ctrl+1`–`9` jump tabs · `Cmd/Ctrl+0` connection manager · `Cmd/Ctrl+Enter` run SQL.
+
+---
+
+## 📦 Install notes
+
+Installers are currently **unsigned** — first-launch warnings on macOS and Windows are expected. Code signing / notarization is planned.
 
 ### 🍎 macOS
 
-Download the `.dmg` for your CPU:
-
-- [Apple Silicon (`.dmg`)](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-arm64.dmg)
-- [Intel (`.dmg`)](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-x64.dmg)
-
-1. Open the `.dmg` and drag **Postgly.app** into `/Applications`.
-2. Because the bundle is not yet signed/notarized, macOS attaches a
-   quarantine attribute to anything downloaded via the browser. Clear it
-   once with:
+1. Open the `.dmg`, drag **Postgly.app** into `/Applications`.
+2. Clear the quarantine attribute (one-time, required because the bundle is unsigned):
 
    ```bash
    xattr -cr /Applications/Postgly.app
    ```
 
-   Without this step, macOS will refuse to launch the app with the
-   message *"Postgly is damaged and can't be opened"*.
-3. Launch Postgly from Launchpad or `/Applications`.
+   Without this, macOS refuses to launch with *"Postgly is damaged and can't be opened"*.
+3. Launch from Launchpad or `/Applications`.
 
 ### 🪟 Windows
 
-Download the installer:
-
-- [`.exe` installer](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64-setup.exe)
-- [`.msi` (managed deploys)](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64.msi)
-
-1. Run the installer.
-2. Windows SmartScreen may show a *"Windows protected your PC"* warning
-   because the binary is unsigned — click **More info → Run anyway**.
-3. Postgly will be available from the Start menu.
+1. Run the [`.exe` installer](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64-setup.exe) (or the [`.msi`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64.msi) for managed deploys).
+2. SmartScreen may show *"Windows protected your PC"* — click **More info → Run anyway**.
+3. Launch from the Start menu.
 
 ### 🐧 Linux
 
-Download a package:
-
-- [`.AppImage`](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-x86_64.AppImage)
-- [`.deb` (Debian / Ubuntu)](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-amd64.deb)
-
-**AppImage** — make it executable and run:
+**AppImage**
 
 ```bash
 chmod +x Postgly-linux-x86_64.AppImage
 ./Postgly-linux-x86_64.AppImage
 ```
 
-**Debian / Ubuntu** — install the `.deb`:
+**Debian / Ubuntu**
 
 ```bash
 sudo dpkg -i Postgly-linux-amd64.deb
@@ -116,40 +99,27 @@ sudo apt-get install -f   # pull missing deps if any
 
 ---
 
-## Using the natural-language SQL assistant
+## 🧑‍💻 Using the natural-language SQL assistant
 
-1. Open **Settings → LLM Config** (header dropdown). Pick a provider
-   preset (OpenAI / Ollama / Custom), paste your base URL and API key,
-   set the model and click **Testar conexão**.
-2. *(Optional)* **Settings → Segurança** — keep "Sempre confirmar
-   operações destrutivas" enabled (default) for a confirmation modal +
-   `EXPLAIN`-based row estimate before any mutation runs.
-3. In any connection tab, switch the records pane to **SQL** mode. A
-   bar with the ✨ icon sits above the editor — type your request:
+1. Open **Settings → LLM Config** (header dropdown). Pick a preset (OpenAI / Ollama / Custom), paste base URL + API key, set the model, click **Testar conexão**.
+2. *(Optional)* **Settings → Segurança** — keep "Sempre confirmar operações destrutivas" enabled (default) for a confirmation modal + `EXPLAIN` row estimate before any mutation runs.
+3. In any connection tab, switch the records pane to **SQL** mode. The bar with the ✨ icon sits above the editor — type your request:
 
    > *"vendas do trimestre por cliente, em ordem decrescente"*
 
-4. The agent will call schema tools (visible in the collapsible
-   "Raciocínio do agente" trace) and emit a JSON answer with one of:
-   - `ok` + the SQL — click **Editar** to drop it into the editor or
-     **Usar SQL** to replace the current statement, then run it from the
-     editor as usual.
-   - `need_info` — clarifying questions and example clauses you can
-     click to refine the prompt.
-   - `not_found` — table candidates ranked by fuzzy distance against
-     your real schema.
-5. Use **Refinar** to keep prior context and ask for a tweak, or the
-   **history** icon to revisit/restore any past prompt from the session.
+4. The agent calls schema tools (visible in the collapsible "Raciocínio do agente" trace) and emits a JSON answer:
+   - `ok` + the SQL — click **Editar** to drop it into the editor or **Usar SQL** to replace the current statement, then run it.
+   - `need_info` — clarifying questions and clickable example clauses to refine the prompt.
+   - `not_found` — table candidates ranked by fuzzy distance against your real schema.
+5. Use **Refinar** to keep prior context, or the **history** icon to revisit/restore any past prompt from the session.
 
-The full request budget is capped at 8 model turns and per-request
-token usage is shown alongside the result.
+Request budget is capped at 8 model turns; per-request token usage is shown alongside the result.
 
 ---
 
-## Contributing
+## 🛠 Contributing
 
-Postgly is open to contributions. The sections below cover running the
-app locally and how the codebase is organized.
+Postgly is open to contributions.
 
 ### Tech stack
 
@@ -164,7 +134,7 @@ app locally and how the codebase is organized.
 ### Prerequisites
 
 - Node.js 20+
-- Rust (stable) + the [Tauri 2 system dependencies](https://tauri.app/start/prerequisites/)
+- Rust (stable) + [Tauri 2 system dependencies](https://tauri.app/start/prerequisites/)
 
 ### Development
 
@@ -173,7 +143,7 @@ make install       # install frontend deps + cargo-llvm-cov
 make dev           # run the desktop app with hot reload
 ```
 
-`make help` lists every target. The most useful ones day to day:
+`make help` lists every target. Day-to-day:
 
 ```bash
 make web                # Vite frontend only (no Tauri shell)
@@ -185,10 +155,7 @@ make build              # produce an installable bundle for the host OS
 
 ### Backend tests
 
-The Rust suite is split in two: in-process unit tests and integration
-tests that hit a real Postgres. `make pg-up` spins up an ephemeral
-`postgres:16-alpine` container (port `5544` by default) and exports
-`POSTGLY_TEST_DB_URL` so the integration tests pick it up automatically.
+The Rust suite is split in two: in-process unit tests and integration tests that hit a real Postgres. `make pg-up` spins up an ephemeral `postgres:16-alpine` container (port `5544` by default) and exports `POSTGLY_TEST_DB_URL` so the integration tests pick it up automatically.
 
 ```bash
 make test-unit          # unit tests only — no Postgres required
@@ -203,18 +170,11 @@ make pg-up / pg-down    # control the test Postgres container
 make pg-psql            # psql shell into the test container
 ```
 
-The CI workflow runs `cargo llvm-cov` with `--fail-under-lines 90
---fail-under-file-lines 90`, so a PR that drops backend coverage below
-90% overall (or below 90% on any single file) fails the build.
-
-**Keyboard shortcuts:** `Cmd/Ctrl+1`–`9` jump to the Nth connection tab,
-`Cmd/Ctrl+0` returns to the connection manager, `Cmd/Ctrl+Enter` runs the
-SQL editor.
+CI runs `cargo llvm-cov` with `--fail-under-lines 90 --fail-under-file-lines 90`, so a PR dropping backend coverage below 90% overall (or on any single file) fails the build.
 
 ### Releases
 
-Pushing a version tag builds and publishes installers for macOS, Windows
-and Linux to a draft GitHub Release:
+Pushing a version tag builds and publishes installers for macOS, Windows and Linux to a draft GitHub Release:
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
@@ -272,29 +232,9 @@ src-tauri/                Backend (Rust / Tauri)
 
 ### Architecture notes
 
-- **Engine-agnostic from day one.** Every database backend implements the
-  single `DatabaseDriver` trait in `src-tauri/src/db/driver.rs`. Postgres
-  is the only engine today; adding MySQL/SQLite later means adding an
-  implementation and one match arm in `db::make_driver` — no call sites
-  change.
-- **Theming** uses CSS custom properties (`src/index.css`) with a `.dark`
-  class on `<html>`. The choice (light / dark / system) is persisted to
-  `localStorage`.
-- **Secrets never touch the metadata store.** Connection metadata is a
-  plain JSON file under the app config dir; the password is stored apart
-  in the OS keyring, keyed by the connection id.
-
-## Roadmap
-
-| Phase | Scope                                                |
-| ----- | ---------------------------------------------------- |
-| 0     | Foundation: scaffold, theming, CI, driver trait   ✅ |
-| 1     | Connection manager (CRUD, OS keyring)             ✅ |
-| 2     | Database explorer: schemas, tables, structure tab ✅ |
-| 3     | Data grid, quick filter, SQL editor               ✅ |
-| 4     | Global tabs — work across multiple databases at once ✅ |
-| 5     | Polish, installers ✅ · auto-update + signing pending |
-| 6     | Natural-language SQL: schema-aware agent, destructive-query guard, suggestions, refine, per-session history, token usage ✅ |
+- **Engine-agnostic from day one.** Every database backend implements the single `DatabaseDriver` trait in `src-tauri/src/db/driver.rs`. Postgres is the only engine today; adding MySQL/SQLite later means adding an implementation and one match arm in `db::make_driver` — no call sites change.
+- **Theming** uses CSS custom properties (`src/index.css`) with a `.dark` class on `<html>`. The choice (light / dark / system) is persisted to `localStorage`.
+- **Secrets never touch the metadata store.** Connection metadata is a plain JSON file under the app config dir; the password is stored apart in the OS keyring, keyed by the connection id.
 
 ## License
 
