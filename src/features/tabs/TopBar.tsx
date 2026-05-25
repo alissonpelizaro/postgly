@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowUpCircle, Database, Info, LayoutGrid, Menu, Settings as SettingsIcon, X } from "lucide-react";
+import { ArrowUpCircle, Brain, Database, Info, LayoutGrid, Menu, Settings as SettingsIcon, X } from "lucide-react";
 
 // import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -24,6 +24,11 @@ interface TopBarProps {
   onSelect: (id: string | null) => void;
   onClose: (id: string) => void;
   onOpenSettings: () => void;
+  /** Show the agent-chat brain button in its enabled (colored) state. */
+  llmConfigured: boolean;
+  /** Whether the right-side chat panel is currently open. */
+  chatOpen: boolean;
+  onToggleChat: () => void;
 }
 
 /**
@@ -38,6 +43,9 @@ export function TopBar({
   onSelect,
   onClose,
   onOpenSettings,
+  llmConfigured,
+  chatOpen,
+  onToggleChat,
 }: TopBarProps) {
   const version = useVersionCheck();
   const { t } = useI18n();
@@ -74,6 +82,13 @@ export function TopBar({
         />
       )}
       {/* <LanguageSwitcher compact /> */}
+      <AgentChatButton
+        enabled={llmConfigured}
+        active={chatOpen}
+        onClick={onToggleChat}
+        enabledTitle={t("topbar.agentChat")}
+        disabledTitle={t("topbar.agentChatDisabled")}
+      />
       <ThemeToggle />
       <AppMenu
         onOpenSettings={onOpenSettings}
@@ -85,6 +100,40 @@ export function TopBar({
 
       <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} version={version} />
     </div>
+  );
+}
+
+/** Brain button that opens the right-side agent chat. Muted until the
+ *  LLM provider is configured. */
+function AgentChatButton({
+  enabled,
+  active,
+  onClick,
+  enabledTitle,
+  disabledTitle,
+}: {
+  enabled: boolean;
+  active: boolean;
+  onClick: () => void;
+  enabledTitle: string;
+  disabledTitle: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!enabled}
+      aria-label={enabled ? enabledTitle : disabledTitle}
+      title={enabled ? enabledTitle : disabledTitle}
+      className={cn(
+        "ml-1 flex size-7 items-center justify-center rounded-md transition-colors",
+        !enabled && "text-muted-foreground/50 cursor-not-allowed",
+        enabled && !active && "text-primary hover:bg-accent",
+        enabled && active && "bg-primary/15 text-primary",
+      )}
+    >
+      <Brain className="size-4" />
+    </button>
   );
 }
 

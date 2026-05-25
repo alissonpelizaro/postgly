@@ -21,6 +21,8 @@ interface ExplorerScreenProps {
   connection: ConnectionMeta;
   /** Close this connection's tab. */
   onClose: () => void;
+  /** Notified whenever the live DB session id changes (open → id, close → null). */
+  onSessionChange?: (sessionId: string | null) => void;
 }
 
 type DetailTab = "structure" | "records";
@@ -30,7 +32,7 @@ type DetailTab = "structure" | "records";
  * tabbed detail panel on the right. Owns the connection session — opened
  * on mount, closed on unmount.
  */
-export function ExplorerScreen({ connection, onClose }: ExplorerScreenProps) {
+export function ExplorerScreen({ connection, onClose, onSessionChange }: ExplorerScreenProps) {
   const { t } = useI18n();
   const [session, setSession] = useState<string | null>(null);
   const [opening, setOpening] = useState(true);
@@ -50,6 +52,7 @@ export function ExplorerScreen({ connection, onClose }: ExplorerScreenProps) {
         if (active) {
           openedId = id;
           setSession(id);
+          onSessionChange?.(id);
         } else {
           void explorerApi.close(id);
         }
@@ -59,8 +62,15 @@ export function ExplorerScreen({ connection, onClose }: ExplorerScreenProps) {
 
     return () => {
       active = false;
-      if (openedId) void explorerApi.close(openedId);
+      if (openedId) {
+        onSessionChange?.(null);
+        void explorerApi.close(openedId);
+      }
     };
+    // `onSessionChange` is intentionally omitted from the deps — the
+    // effect manages the lifetime of one open connection and shouldn't
+    // re-run just because the callback identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connection.id]);
 
   return (
