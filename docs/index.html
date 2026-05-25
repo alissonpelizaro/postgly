@@ -338,25 +338,25 @@
         </div>
         <div class="shots-grid">
           <figure class="shot">
-            <a class="shot-frame" href="img/schema_explorer_records_grid.png" target="_blank" rel="noopener">
+            <a class="shot-frame" href="img/schema_explorer_records_grid.png" data-lightbox>
               <img src="img/schema_explorer_records_grid.png" alt="Postgly schema explorer with records grid and quick-filter" loading="lazy" />
             </a>
             <figcaption>Schema explorer with the records grid and quick-filter.</figcaption>
           </figure>
           <figure class="shot">
-            <a class="shot-frame" href="img/natural_language_bar.png" target="_blank" rel="noopener">
+            <a class="shot-frame" href="img/natural_language_bar.png" data-lightbox>
               <img src="img/natural_language_bar.png" alt="Postgly natural-language SQL bar above the editor" loading="lazy" />
             </a>
             <figcaption>The ✨ bar above the SQL editor — ask, review, run.</figcaption>
           </figure>
           <figure class="shot">
-            <a class="shot-frame" href="img/destructive_confirmation.png" target="_blank" rel="noopener">
+            <a class="shot-frame" href="img/destructive_confirmation.png" data-lightbox>
               <img src="img/destructive_confirmation.png" alt="Destructive-query confirmation modal with row estimate" loading="lazy" />
             </a>
             <figcaption>Destructive operations stop for a row-estimate confirmation.</figcaption>
           </figure>
           <figure class="shot">
-            <a class="shot-frame" href="img/llm_settings.png" target="_blank" rel="noopener">
+            <a class="shot-frame" href="img/llm_settings.png" data-lightbox>
               <img src="img/llm_settings.png" alt="Postgly LLM settings panel" loading="lazy" />
             </a>
             <figcaption>Plug in any OpenAI-compatible endpoint in Settings → LLM Config.</figcaption>
@@ -511,6 +511,14 @@ sudo apt-get install -f</code></pre>
       <p class="foot-copy">© <span id="year"></span> Postgly · Made by <a href="https://github.com/alissonpelizaro" target="_blank" rel="noopener">Alisson Pelizaro</a></p>
     </div>
   </footer>
+
+  <div id="lightbox" class="lightbox" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Image preview">
+    <button class="lightbox-close" type="button" aria-label="Close preview">×</button>
+    <figure class="lightbox-figure">
+      <img class="lightbox-img" src="" alt="" />
+      <figcaption class="lightbox-cap"></figcaption>
+    </figure>
+  </div>
 
   <script src="script.js" defer></script>
 </body>
