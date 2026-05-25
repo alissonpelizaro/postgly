@@ -13,7 +13,7 @@ use crate::settings::{self, LlmConfig, SafetyConfig, LLM_API_KEY_ACCOUNT};
 #[derive(Debug, Serialize)]
 pub struct SettingsView {
     pub llm: LlmConfig,
-    /// `true` when an API key is stored in the keyring.
+    /// `true` when an API key is stored in the encrypted vault.
     pub llm_api_key_configured: bool,
     pub safety: SafetyConfig,
 }
@@ -34,11 +34,11 @@ pub struct LlmConfigInput {
 impl LlmConfigInput {
     /// Resolve the effective API key: typed value, or fall back to the
     /// stored secret when the user is editing without retyping it.
-    fn resolve_api_key(&self) -> AppResult<String> {
+    fn resolve_api_key<R: tauri::Runtime>(&self, app: &tauri::AppHandle<R>) -> AppResult<String> {
         if !self.api_key.is_empty() {
             return Ok(self.api_key.clone());
         }
-        let stored = settings::get_secret(LLM_API_KEY_ACCOUNT)?;
+        let stored = settings::get_secret(app, LLM_API_KEY_ACCOUNT)?;
         if stored.is_empty() {
             return Err(AppError::Connection("API key is required".into()));
         }
@@ -50,7 +50,7 @@ impl LlmConfigInput {
 #[tauri::command]
 pub fn get_settings<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> AppResult<SettingsView> {
     let settings = settings::load(&app)?;
-    let configured = !settings::get_secret(LLM_API_KEY_ACCOUNT)?.is_empty();
+    let configured = !settings::get_secret(&app, LLM_API_KEY_ACCOUNT)?.is_empty();
     Ok(SettingsView {
         llm: settings.llm,
         llm_api_key_configured: configured,
@@ -75,10 +75,10 @@ pub fn save_llm_config<R: tauri::Runtime>(
     settings::save(&app, &current)?;
 
     if !input.api_key.is_empty() {
-        settings::set_secret(LLM_API_KEY_ACCOUNT, &input.api_key)?;
+        settings::set_secret(&app, LLM_API_KEY_ACCOUNT, &input.api_key)?;
     }
 
-    let configured = !settings::get_secret(LLM_API_KEY_ACCOUNT)?.is_empty();
+    let configured = !settings::get_secret(&app, LLM_API_KEY_ACCOUNT)?.is_empty();
     Ok(SettingsView {
         llm: current.llm,
         llm_api_key_configured: configured,
@@ -96,7 +96,7 @@ pub fn save_safety_config<R: tauri::Runtime>(
     let mut current = settings::load(&app)?;
     current.safety = input;
     settings::save(&app, &current)?;
-    let configured = !settings::get_secret(LLM_API_KEY_ACCOUNT)?.is_empty();
+    let configured = !settings::get_secret(&app, LLM_API_KEY_ACCOUNT)?.is_empty();
     Ok(SettingsView {
         llm: current.llm,
         llm_api_key_configured: configured,
@@ -107,15 +107,18 @@ pub fn save_safety_config<R: tauri::Runtime>(
 /// Drop the stored LLM API key. Other LLM fields stay so the user can
 /// re-enter just the key without retyping the URL and model.
 #[tauri::command]
-pub fn clear_llm_api_key() -> AppResult<()> {
-    settings::set_secret(LLM_API_KEY_ACCOUNT, "")
+pub fn clear_llm_api_key<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> AppResult<()> {
+    settings::set_secret(&app, LLM_API_KEY_ACCOUNT, "")
 }
 
 /// Test the LLM provider config without persisting anything. Probes
 /// `{base_url}/models` with the supplied (or previously stored) key.
 #[tauri::command]
-pub async fn test_llm_config(input: LlmConfigInput) -> AppResult<LlmConnectivity> {
-    let api_key = input.resolve_api_key()?;
+pub async fn test_llm_config<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    input: LlmConfigInput,
+) -> AppResult<LlmConnectivity> {
+    let api_key = input.resolve_api_key(&app)?;
     llm::test_connectivity(&input.base_url, &api_key).await
 }
 
@@ -180,7 +183,7 @@ mod tests {
         let view = save_llm_config(app.handle().clone(), fresh_input("")).unwrap();
         assert!(view.llm_api_key_configured);
         assert_eq!(
-            settings::get_secret(LLM_API_KEY_ACCOUNT).unwrap(),
+            settings::get_secret(app.handle(), LLM_API_KEY_ACCOUNT).unwrap(),
             "sk-first"
         );
     }
@@ -188,18 +191,22 @@ mod tests {
     #[cfg(feature = "mock-keyring")]
     #[test]
     fn resolve_api_key_falls_back_to_stored_secret() {
+        let _sandbox = EnvSandbox::new();
         settings::reset_mock_keyring();
-        settings::set_secret(LLM_API_KEY_ACCOUNT, "sk-stored").unwrap();
+        let app = mock_app();
+        settings::set_secret(app.handle(), LLM_API_KEY_ACCOUNT, "sk-stored").unwrap();
         let input = fresh_input("");
-        assert_eq!(input.resolve_api_key().unwrap(), "sk-stored");
+        assert_eq!(input.resolve_api_key(app.handle()).unwrap(), "sk-stored");
     }
 
     #[cfg(feature = "mock-keyring")]
     #[test]
     fn resolve_api_key_errors_when_blank_and_no_stored_secret() {
+        let _sandbox = EnvSandbox::new();
         settings::reset_mock_keyring();
+        let app = mock_app();
         let input = fresh_input("");
-        let err = input.resolve_api_key().unwrap_err();
+        let err = input.resolve_api_key(app.handle()).unwrap_err();
         assert!(err.to_string().contains("API key is required"));
     }
 
@@ -250,9 +257,13 @@ mod tests {
     #[cfg(feature = "mock-keyring")]
     #[tokio::test]
     async fn test_llm_config_propagates_resolution_error() {
+        let _sandbox = EnvSandbox::new();
         settings::reset_mock_keyring();
+        let app = mock_app();
         let input = fresh_input("");
-        let err = test_llm_config(input).await.unwrap_err();
+        let err = test_llm_config(app.handle().clone(), input)
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("API key is required"));
     }
 
@@ -264,7 +275,7 @@ mod tests {
         let app = mock_app();
         save_llm_config(app.handle().clone(), fresh_input("sk-test")).unwrap();
 
-        clear_llm_api_key().unwrap();
+        clear_llm_api_key(app.handle().clone()).unwrap();
         let view = get_settings(app.handle().clone()).unwrap();
         assert!(!view.llm_api_key_configured);
         // LLM metadata stayed.

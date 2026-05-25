@@ -2,7 +2,7 @@
 //!
 //! Settings are split the same way connections are: non-secret fields
 //! land in a JSON file under the app config directory, secrets (e.g. the
-//! LLM provider API key) go to the OS keyring.
+//! LLM provider API key) go to encrypted `vault.json`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,20 +11,16 @@ use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 use crate::error::{AppError, AppResult};
+use crate::vault;
 
-/// Keyring service namespace for settings secrets. Distinct from the
-/// connections namespace so account collisions are impossible.
-#[cfg(not(feature = "mock-keyring"))]
-const KEYRING_SERVICE: &str = "com.alissonpelizaro.postgly.settings";
-
-/// Stable keyring account name for the LLM API key.
+/// Stable vault account name for the LLM API key.
 pub const LLM_API_KEY_ACCOUNT: &str = "llm.api_key";
 
 /// File name of the settings store inside the app config directory.
 const STORE_FILE: &str = "settings.json";
 
 /// Non-secret LLM provider configuration. The API key is stored
-/// separately in the OS keyring under [`LLM_API_KEY_ACCOUNT`].
+/// separately in the encrypted vault under [`LLM_API_KEY_ACCOUNT`].
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct LlmConfig {
     /// Free-form provider label (e.g. "openai", "ollama"). Kept as a
@@ -111,101 +107,38 @@ pub fn save<R: tauri::Runtime>(app: &tauri::AppHandle<R>, settings: &Settings) -
     save_to(&store_path(app)?, settings)
 }
 
-/// Build a keyring entry for a settings secret account.
-#[cfg(not(feature = "mock-keyring"))]
-fn keyring_entry(account: &str) -> AppResult<keyring::Entry> {
-    keyring::Entry::new(KEYRING_SERVICE, account)
-        .map_err(|e| AppError::Other(format!("keyring: {e}")))
-}
-
 /// Store (or replace) a secret value for a settings account.
-#[cfg(not(feature = "mock-keyring"))]
-pub fn set_secret(account: &str, value: &str) -> AppResult<()> {
-    keyring_entry(account)?
-        .set_password(value)
-        .map_err(|e| AppError::Other(format!("keyring: {e}")))
+pub fn set_secret<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    account: &str,
+    value: &str,
+) -> AppResult<()> {
+    vault::set_setting_secret(app, account, value)
 }
 
 /// Retrieve a secret. Returns an empty string when the entry doesn't
 /// exist so callers can render "not configured" without special-casing.
-#[cfg(not(feature = "mock-keyring"))]
-pub fn get_secret(account: &str) -> AppResult<String> {
-    match keyring_entry(account)?.get_password() {
-        Ok(v) => Ok(v),
-        Err(keyring::Error::NoEntry) => Ok(String::new()),
-        Err(e) => Err(AppError::Other(format!("keyring: {e}"))),
-    }
+pub fn get_secret<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    account: &str,
+) -> AppResult<String> {
+    vault::get_setting_secret(app, account)
 }
 
 /// Remove a settings secret. A missing entry is treated as success.
-#[cfg(not(feature = "mock-keyring"))]
 #[allow(dead_code)]
-pub fn delete_secret(account: &str) -> AppResult<()> {
-    match keyring_entry(account)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(AppError::Other(format!("keyring: {e}"))),
-    }
-}
-
-/// In-memory secret store for tests (mirrors `connections::mock_keyring`).
-#[cfg(feature = "mock-keyring")]
-mod mock_keyring {
-    use super::AppResult;
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
-    static STORE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
-
-    fn with_store<R>(f: impl FnOnce(&mut HashMap<String, String>) -> R) -> R {
-        let mut guard = STORE.lock().expect("mock settings keyring poisoned");
-        let map = guard.get_or_insert_with(HashMap::new);
-        f(map)
-    }
-
-    pub fn set(account: &str, value: &str) -> AppResult<()> {
-        with_store(|m| m.insert(account.to_string(), value.to_string()));
-        Ok(())
-    }
-
-    pub fn get(account: &str) -> AppResult<String> {
-        with_store(|m| Ok(m.get(account).cloned().unwrap_or_default()))
-    }
-
-    pub fn delete(account: &str) -> AppResult<()> {
-        with_store(|m| {
-            m.remove(account);
-        });
-        Ok(())
-    }
-
-    pub fn reset() {
-        with_store(|m| m.clear());
-    }
-}
-
-#[cfg(feature = "mock-keyring")]
-pub fn set_secret(account: &str, value: &str) -> AppResult<()> {
-    mock_keyring::set(account, value)
-}
-
-#[cfg(feature = "mock-keyring")]
-pub fn get_secret(account: &str) -> AppResult<String> {
-    mock_keyring::get(account)
-}
-
-#[cfg(feature = "mock-keyring")]
-#[allow(dead_code)]
-pub fn delete_secret(account: &str) -> AppResult<()> {
-    mock_keyring::delete(account)
+pub fn delete_secret<R: tauri::Runtime>(app: &tauri::AppHandle<R>, account: &str) -> AppResult<()> {
+    vault::delete_setting_secret(app, account)
 }
 
 #[cfg(feature = "mock-keyring")]
 #[allow(unused_imports)]
-pub use mock_keyring::reset as reset_mock_keyring;
+pub use crate::vault::reset_mock_setting_store as reset_mock_keyring;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::connections::test_utils::EnvSandbox;
     use tempfile::tempdir;
 
     #[test]
@@ -274,11 +207,15 @@ mod tests {
     #[cfg(feature = "mock-keyring")]
     #[test]
     fn secret_round_trip_with_mock_keyring() {
+        let _sandbox = EnvSandbox::new();
         reset_mock_keyring();
-        assert_eq!(get_secret("missing").unwrap(), "");
-        set_secret("k", "sk-test").unwrap();
-        assert_eq!(get_secret("k").unwrap(), "sk-test");
-        delete_secret("k").unwrap();
-        assert_eq!(get_secret("k").unwrap(), "");
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        assert_eq!(get_secret(app.handle(), "missing").unwrap(), "");
+        set_secret(app.handle(), "k", "sk-test").unwrap();
+        assert_eq!(get_secret(app.handle(), "k").unwrap(), "sk-test");
+        delete_secret(app.handle(), "k").unwrap();
+        assert_eq!(get_secret(app.handle(), "k").unwrap(), "");
     }
 }

@@ -1,12 +1,10 @@
 //! Connection persistence.
 //!
-//! A saved connection is split in two so the secret never touches disk in
-//! plain form:
+//! A saved connection is split in two:
 //!
 //! - **metadata** (name, host, port, database, user) → a JSON file under
 //!   the app config directory;
-//! - **password** → the OS keyring (Keychain / Credential Manager /
-//!   Secret Service), keyed by the connection id.
+//! - **password** → encrypted `vault.json`, keyed by the connection id.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,10 +14,7 @@ use tauri::Manager;
 
 use crate::db::DatabaseKind;
 use crate::error::{AppError, AppResult};
-
-/// Keyring service namespace — matches the app's bundle identifier.
-#[cfg(not(feature = "mock-keyring"))]
-const KEYRING_SERVICE: &str = "com.alissonpelizaro.postgly";
+use crate::vault;
 
 /// File name of the metadata store inside the app config directory.
 const STORE_FILE: &str = "connections.json";
@@ -80,104 +75,34 @@ pub fn save_all<R: tauri::Runtime>(
     save_all_to(&store_path(app)?, items)
 }
 
-/// Build a keyring entry for a connection id.
-#[cfg(not(feature = "mock-keyring"))]
-fn keyring_entry(id: &str) -> AppResult<keyring::Entry> {
-    keyring::Entry::new(KEYRING_SERVICE, id).map_err(|e| AppError::Other(format!("keyring: {e}")))
-}
-
 /// Store (or replace) the password for a connection.
-#[cfg(not(feature = "mock-keyring"))]
-pub fn set_password(id: &str, password: &str) -> AppResult<()> {
-    keyring_entry(id)?
-        .set_password(password)
-        .map_err(|e| AppError::Other(format!("keyring: {e}")))
+pub fn set_password<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    id: &str,
+    password: &str,
+) -> AppResult<()> {
+    vault::set_connection_password(app, id, password)
 }
 
 /// Retrieve the stored password for a connection.
-#[cfg(not(feature = "mock-keyring"))]
-pub fn get_password(id: &str) -> AppResult<String> {
-    keyring_entry(id)?
-        .get_password()
-        .map_err(|e| AppError::Other(format!("keyring: {e}")))
+pub fn get_password<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> AppResult<String> {
+    vault::get_connection_password(app, id)
 }
 
 /// Remove the stored password. A missing entry is treated as success so
 /// deleting a connection is idempotent.
-#[cfg(not(feature = "mock-keyring"))]
-pub fn delete_password(id: &str) -> AppResult<()> {
-    match keyring_entry(id)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(AppError::Other(format!("keyring: {e}"))),
-    }
-}
-
-/// In-memory password store used in tests (enabled by the
-/// `mock-keyring` Cargo feature). Replaces the OS keyring without
-/// touching production code paths or the host's real credential store.
-#[cfg(feature = "mock-keyring")]
-mod mock_keyring {
-    use super::{AppError, AppResult};
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
-    static STORE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
-
-    fn with_store<R>(f: impl FnOnce(&mut HashMap<String, String>) -> R) -> R {
-        let mut guard = STORE.lock().expect("mock keyring poisoned");
-        let map = guard.get_or_insert_with(HashMap::new);
-        f(map)
-    }
-
-    pub fn set(id: &str, password: &str) -> AppResult<()> {
-        with_store(|m| m.insert(id.to_string(), password.to_string()));
-        Ok(())
-    }
-
-    pub fn get(id: &str) -> AppResult<String> {
-        with_store(|m| {
-            m.get(id)
-                .cloned()
-                .ok_or_else(|| AppError::Other("keyring: no entry".into()))
-        })
-    }
-
-    pub fn delete(id: &str) -> AppResult<()> {
-        with_store(|m| {
-            m.remove(id);
-        });
-        Ok(())
-    }
-
-    /// Wipe the mock store. Used between tests so state doesn't bleed
-    /// across cases sharing the process-wide map.
-    pub fn reset() {
-        with_store(|m| m.clear());
-    }
-}
-
-#[cfg(feature = "mock-keyring")]
-pub fn set_password(id: &str, password: &str) -> AppResult<()> {
-    mock_keyring::set(id, password)
-}
-
-#[cfg(feature = "mock-keyring")]
-pub fn get_password(id: &str) -> AppResult<String> {
-    mock_keyring::get(id)
-}
-
-#[cfg(feature = "mock-keyring")]
-pub fn delete_password(id: &str) -> AppResult<()> {
-    mock_keyring::delete(id)
+pub fn delete_password<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> AppResult<()> {
+    vault::delete_connection_password(app, id)
 }
 
 #[cfg(feature = "mock-keyring")]
 #[allow(unused_imports)]
-pub use mock_keyring::reset as reset_mock_keyring;
+pub use crate::vault::reset_mock_connection_store as reset_mock_keyring;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::connections::test_utils::EnvSandbox;
     use tempfile::tempdir;
 
     fn sample() -> ConnectionMeta {
@@ -226,12 +151,16 @@ mod tests {
     #[cfg(feature = "mock-keyring")]
     #[test]
     fn password_round_trip_with_mock_keyring() {
+        let _sandbox = EnvSandbox::new();
         reset_mock_keyring();
-        set_password("id-1", "secret").unwrap();
-        assert_eq!(get_password("id-1").unwrap(), "secret");
-        delete_password("id-1").unwrap();
-        assert!(get_password("id-1").is_err());
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        set_password(app.handle(), "id-1", "secret").unwrap();
+        assert_eq!(get_password(app.handle(), "id-1").unwrap(), "secret");
+        delete_password(app.handle(), "id-1").unwrap();
+        assert!(get_password(app.handle(), "id-1").is_err());
         // Deleting twice is idempotent.
-        delete_password("id-1").unwrap();
+        delete_password(app.handle(), "id-1").unwrap();
     }
 }

@@ -7,6 +7,7 @@ pub mod error;
 pub mod llm;
 pub mod settings;
 pub mod state;
+pub mod vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

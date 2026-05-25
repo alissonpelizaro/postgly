@@ -430,8 +430,9 @@ fn extract_schema_and_name(args: &Value) -> AppResult<(String, String)> {
 mod tests {
     use super::*;
     use crate::db::driver::{
-        ColumnSchema, DatabaseSchema, ForeignKeySchema, RelationKind, TableSchema,
+        ColumnSchema, DatabaseSchema, ForeignKeySchema, QueryResult, RelationKind, TableSchema,
     };
+    use std::sync::Mutex;
 
     fn fixture_schema() -> Arc<DatabaseSchema> {
         Arc::new(DatabaseSchema {
@@ -603,6 +604,125 @@ mod tests {
         SessionTools::new(Arc::new(InertDriver), fixture_schema())
     }
 
+    #[derive(Default)]
+    struct RecordingDriver {
+        executed: Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl crate::db::DatabaseDriver for RecordingDriver {
+        fn kind(&self) -> crate::db::driver::DatabaseKind {
+            crate::db::driver::DatabaseKind::Postgres
+        }
+        async fn connect(&mut self, _: &crate::db::driver::ConnectionConfig) -> AppResult<()> {
+            Ok(())
+        }
+        async fn ping(&self) -> AppResult<()> {
+            Ok(())
+        }
+        async fn list_schemas(&self) -> AppResult<Vec<crate::db::driver::SchemaInfo>> {
+            Ok(vec![])
+        }
+        async fn list_tables(&self, _: &str) -> AppResult<Vec<crate::db::driver::TableInfo>> {
+            Ok(vec![])
+        }
+        async fn describe_table(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> AppResult<crate::db::driver::TableDetails> {
+            Ok(crate::db::driver::TableDetails {
+                columns: vec![],
+                indexes: vec![],
+            })
+        }
+        async fn introspect_schema(&self) -> AppResult<DatabaseSchema> {
+            Ok(DatabaseSchema { tables: vec![] })
+        }
+        async fn execute(&self, sql: &str) -> AppResult<QueryResult> {
+            self.executed.lock().unwrap().push(sql.to_string());
+            if sql.contains("big_result_set") {
+                let rows = (0..120)
+                    .map(|i| vec![Some(i.to_string())])
+                    .collect::<Vec<_>>();
+                return Ok(QueryResult {
+                    columns: vec!["id".into()],
+                    rows,
+                    rows_affected: 120,
+                });
+            }
+            Ok(QueryResult {
+                columns: vec!["id".into()],
+                rows: vec![vec![Some("1".into())]],
+                rows_affected: 3,
+            })
+        }
+        async fn browse_table(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<&crate::db::driver::RowFilter>,
+            _: Option<&crate::db::driver::OrderBy>,
+            _: i64,
+            _: i64,
+        ) -> AppResult<QueryResult> {
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: 0,
+            })
+        }
+        async fn update_row(
+            &self,
+            _: &str,
+            _: &str,
+            _: &[crate::db::driver::CellValue],
+            _: &[crate::db::driver::CellValue],
+        ) -> AppResult<QueryResult> {
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: 0,
+            })
+        }
+        async fn insert_row(
+            &self,
+            _: &str,
+            _: &str,
+            _: &[crate::db::driver::CellValue],
+        ) -> AppResult<QueryResult> {
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: 0,
+            })
+        }
+        async fn delete_row(
+            &self,
+            _: &str,
+            _: &str,
+            _: &[crate::db::driver::CellValue],
+        ) -> AppResult<QueryResult> {
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: 0,
+            })
+        }
+        fn query_history(&self) -> Vec<String> {
+            vec![]
+        }
+        async fn disconnect(&mut self) -> AppResult<()> {
+            Ok(())
+        }
+    }
+
+    fn tools_with_recording_driver() -> (SessionTools, Arc<RecordingDriver>) {
+        let driver = Arc::new(RecordingDriver::default());
+        let tools = SessionTools::new(driver.clone(), fixture_schema());
+        (tools, driver)
+    }
+
     #[test]
     fn definitions_expose_tools_with_expected_names() {
         let defs = SessionTools::definitions();
@@ -708,6 +828,15 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_name_argument_is_rejected() {
+        let err = tools()
+            .execute("describe_table", json!({"schema": "public"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("name"));
+    }
+
+    #[tokio::test]
     async fn sample_rows_clamps_limit_and_rejects_missing_tables() {
         let err = tools()
             .execute("sample_rows", json!({"schema": "public", "name": "ghost"}))
@@ -725,5 +854,120 @@ mod tests {
             .await
             .unwrap();
         assert!(ok.get("columns").is_some());
+    }
+
+    #[tokio::test]
+    async fn run_select_rejects_empty_batch_and_mutations() {
+        let (tools, _) = tools_with_recording_driver();
+        let err = tools
+            .execute("run_select", json!({"sql": "   "}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("empty SQL"));
+
+        let err = tools
+            .execute("run_select", json!({"sql": "SELECT 1; SELECT 2"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("single statement"));
+
+        let err = tools
+            .execute("run_select", json!({"sql": "DELETE FROM public.customer"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("only SELECT"));
+    }
+
+    #[tokio::test]
+    async fn run_select_truncates_large_results_to_row_limit() {
+        let (tools, driver) = tools_with_recording_driver();
+        let out = tools
+            .execute("run_select", json!({"sql": "SELECT * FROM big_result_set"}))
+            .await
+            .unwrap();
+        assert_eq!(out["truncated"], true);
+        assert_eq!(out["row_limit"], RUN_SELECT_ROW_LIMIT as u64);
+        assert_eq!(out["row_count"], 120);
+        assert_eq!(out["rows"].as_array().unwrap().len(), RUN_SELECT_ROW_LIMIT);
+        assert!(driver
+            .executed
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|sql| sql.contains("big_result_set")));
+    }
+
+    #[tokio::test]
+    async fn run_write_rejects_invalid_inputs() {
+        let (tools, _) = tools_with_recording_driver();
+        let err = tools
+            .execute("run_write", json!({"sql": "  ", "summary": ""}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("empty SQL"));
+
+        let err = tools
+            .execute(
+                "run_write",
+                json!({"sql":"UPDATE x SET y=1; UPDATE x SET y=2", "summary":"x"}),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("single statement"));
+
+        let err = tools
+            .execute("run_write", json!({"sql":"SELECT 1", "summary":"x"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("for mutations"));
+
+        let err = tools
+            .execute("run_write", json!({"sql":"VACUUM", "summary":"x"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("could not classify"));
+    }
+
+    #[tokio::test]
+    async fn run_write_returns_approval_for_destructive_and_executes_safe_writes() {
+        let (tools, driver) = tools_with_recording_driver();
+
+        let destructive = tools
+            .execute(
+                "run_write",
+                json!({"sql":"DELETE FROM public.customer", "summary":"wipe"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(destructive["needs_approval"], true);
+        assert_eq!(destructive["unbounded_dml"], true);
+        assert!(driver.executed.lock().unwrap().is_empty());
+
+        let safe = tools
+            .execute(
+                "run_write",
+                json!({"sql":"INSERT INTO public.customer (id,name) VALUES (1,'a')", "summary":"seed"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(safe["needs_approval"], false);
+        assert_eq!(safe["executed"], true);
+        assert_eq!(safe["rows_affected"], 3);
+        assert!(!driver.executed.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn run_write_respects_confirm_writes_flag_for_safe_mutations() {
+        let driver = Arc::new(RecordingDriver::default());
+        let tools = SessionTools::new(driver.clone(), fixture_schema()).with_confirm_writes(true);
+        let out = tools
+            .execute(
+                "run_write",
+                json!({"sql":"UPDATE public.customer SET name='b' WHERE id=1", "summary":"rename"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(out["needs_approval"], true);
+        assert!(driver.executed.lock().unwrap().is_empty());
     }
 }

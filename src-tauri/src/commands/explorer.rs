@@ -29,7 +29,7 @@ pub(crate) fn session_for(state: &AppState, id: &str) -> AppResult<Session> {
 
 /// Open a live connection for a saved connection and return its session id.
 ///
-/// The password is read from the OS keyring; the rest of the config comes
+/// The password is read from encrypted `vault.json`; the rest of the config comes
 /// from the metadata store. A fresh session id is minted each call, so the
 /// same connection can be opened more than once (Phase 4 global tabs).
 #[tauri::command]
@@ -42,7 +42,7 @@ pub async fn open_connection<R: tauri::Runtime>(
         .into_iter()
         .find(|c| c.id == connection_id)
         .ok_or_else(|| AppError::Other("connection not found".into()))?;
-    let password = connections::get_password(&connection_id)?;
+    let password = connections::get_password(&app, &connection_id)?;
 
     let config = ConnectionConfig {
         name: meta.name,

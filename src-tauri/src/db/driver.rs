@@ -21,7 +21,7 @@ pub enum DatabaseKind {
 /// Everything needed to open a connection. This is the shape the frontend
 /// connection form produces. The password is intentionally part of the
 /// config struct but is *never* persisted alongside the other fields —
-/// see the connection store (Phase 1) which offloads it to the OS keyring.
+/// see the connection store (Phase 1) which offloads it to encrypted vault.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionConfig {
     /// Friendly name shown in the connection list.

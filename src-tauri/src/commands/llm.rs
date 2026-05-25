@@ -43,7 +43,7 @@ pub async fn generate_sql<R: tauri::Runtime>(
             "LLM is not configured — set base URL and model in Settings.".into(),
         ));
     }
-    let api_key = settings::get_secret(LLM_API_KEY_ACCOUNT)?;
+    let api_key = settings::get_secret(&app, LLM_API_KEY_ACCOUNT)?;
     if api_key.trim().is_empty() {
         return Err(AppError::Other(
             "LLM API key is not configured — set it in Settings.".into(),
@@ -183,7 +183,7 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
             "LLM is not configured — set base URL and model in Settings.".into(),
         ));
     }
-    let api_key = settings::get_secret(LLM_API_KEY_ACCOUNT)?;
+    let api_key = settings::get_secret(&app, LLM_API_KEY_ACCOUNT)?;
     if api_key.trim().is_empty() {
         return Err(AppError::Other(
             "LLM API key is not configured — set it in Settings.".into(),
@@ -360,7 +360,7 @@ pub async fn agent_generate_title<R: tauri::Runtime>(
     if cfg.base_url.trim().is_empty() || cfg.model.trim().is_empty() {
         return Err(AppError::Other("LLM is not configured.".into()));
     }
-    let api_key = settings::get_secret(LLM_API_KEY_ACCOUNT)?;
+    let api_key = settings::get_secret(&app, LLM_API_KEY_ACCOUNT)?;
     if api_key.trim().is_empty() {
         return Err(AppError::Other("LLM API key is not configured.".into()));
     }
@@ -613,6 +613,13 @@ mod tests {
             .expect("mock app")
     }
 
+    fn mock_app_without_session() -> tauri::App<tauri::test::MockRuntime> {
+        tauri::test::mock_builder()
+            .manage(AppState::default())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app")
+    }
+
     async fn write_llm_config<R: tauri::Runtime>(
         app: &tauri::AppHandle<R>,
         base_url: &str,
@@ -679,7 +686,7 @@ mod tests {
         let server = MockServer::start().await; // unused but ensures base url is well-formed
         write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "key").await;
         // Wipe the key after saving (simulates the user clearing it).
-        settings::set_secret(LLM_API_KEY_ACCOUNT, "").unwrap();
+        settings::set_secret(app.handle(), LLM_API_KEY_ACCOUNT, "").unwrap();
 
         let err = generate_sql(
             app.handle().clone(),
@@ -945,5 +952,378 @@ mod tests {
             .trace
             .iter()
             .any(|e| matches!(e, agent::TraceEvent::AssistantMessage { .. })));
+    }
+
+    #[test]
+    fn clean_title_strips_prefix_quotes_and_punctuation() {
+        let cleaned = clean_title("Title: \"Relatorio de vendas.\"");
+        assert_eq!(cleaned, "Relatorio de vendas");
+    }
+
+    #[test]
+    fn clean_title_truncates_very_long_outputs() {
+        let long = "a".repeat(120);
+        let cleaned = clean_title(&long);
+        assert_eq!(cleaned.len(), 80);
+    }
+
+    #[test]
+    fn now_seconds_is_never_negative() {
+        assert!(now_seconds() >= 0);
+    }
+
+    #[test]
+    fn conversational_prompts_include_expected_guidance() {
+        let unbound = conversational_system_prompt();
+        assert!(unbound.contains("open a connection tab"));
+        let bound = conversational_system_prompt_with_tools();
+        assert!(bound.contains("run_write"));
+        assert!(bound.contains("needs_approval"));
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn agent_chat_send_unbound_rejects_empty_instruction() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_without_session();
+        let err = agent_chat_send(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            vec![],
+            "   ".into(),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("instruction is empty"));
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn agent_chat_send_unbound_returns_content_and_no_trace() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_without_session();
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": {"role":"assistant", "content":"Resposta final"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}
+            })))
+            .mount(&server)
+            .await;
+
+        write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "sk").await;
+
+        let out = agent_chat_send(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            vec![
+                ChatTurn {
+                    role: "tool".into(),
+                    content: "skip".into(),
+                },
+                ChatTurn {
+                    role: "user".into(),
+                    content: "oi".into(),
+                },
+            ],
+            "resuma".into(),
+            None,
+            Some("  ".into()),
+            Some(5.0),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(out.content, "Resposta final");
+        assert!(out.trace.is_empty());
+        assert_eq!(out.usage.total_tokens, 5);
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn agent_chat_send_unbound_errors_when_provider_returns_no_choices_or_empty_content() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_without_session();
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": []
+            })))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": {"role":"assistant", "content":"   "},
+                    "finish_reason":"stop"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "sk").await;
+
+        let err = agent_chat_send(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            vec![],
+            "q1".into(),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("no choices"));
+
+        let err = agent_chat_send(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            vec![],
+            "q2".into(),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("empty response"));
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn agent_chat_send_bound_uses_tools_loop_and_returns_trace() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_with_session("s");
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": {
+                        "role":"assistant",
+                        "tool_calls": [{
+                            "id":"call_1",
+                            "type":"function",
+                            "function":{"name":"list_tables","arguments":"{}"}
+                        }]
+                    },
+                    "finish_reason":"tool_calls"
+                }]
+            })))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": {"role":"assistant", "content":"Use a tabela users"},
+                    "finish_reason":"stop"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "sk").await;
+
+        let out = agent_chat_send(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            vec![],
+            "listar usuarios".into(),
+            Some("s".into()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(out.content.contains("users"));
+        assert!(out.trace.iter().any(
+            |e| matches!(e, agent::TraceEvent::ToolCall { name, .. } if name == "list_tables")
+        ));
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn agent_chat_send_bound_errors_for_unknown_session_and_empty_answer() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_with_session("s");
+        let server = MockServer::start().await;
+
+        write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "sk").await;
+
+        let err = agent_chat_send(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            vec![],
+            "x".into(),
+            Some("ghost".into()),
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("session not found"));
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": {"role":"assistant", "content":" "},
+                    "finish_reason":"stop"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let err = agent_chat_send(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            vec![],
+            "x".into(),
+            Some("s".into()),
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("empty response"));
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn agent_execute_pending_mutation_validates_and_executes_single_mutation() {
+        let app = mock_app_with_session("s");
+        let app_state = app.state::<AppState>();
+        {
+            let mut cache = app_state.schema_cache.lock().unwrap();
+            cache.insert(
+                "s".into(),
+                Arc::new(DatabaseSchema {
+                    tables: vec![TableSchema {
+                        schema: "public".into(),
+                        name: "x".into(),
+                        kind: RelationKind::Table,
+                        comment: None,
+                        columns: vec![],
+                        primary_key: vec![],
+                        foreign_keys: vec![],
+                    }],
+                }),
+            );
+        }
+
+        let err = agent_execute_pending_mutation(app_state.clone(), "s".into(), "".into())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("empty SQL"));
+
+        let err = agent_execute_pending_mutation(app_state.clone(), "s".into(), "SELECT 1".into())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("for mutations"));
+
+        let err = agent_execute_pending_mutation(
+            app_state.clone(),
+            "s".into(),
+            "UPDATE t SET x=1; UPDATE t SET x=2".into(),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("single statement"));
+
+        let out = agent_execute_pending_mutation(
+            app_state.clone(),
+            "s".into(),
+            "UPDATE public.users SET id = 2 WHERE id = 1".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.rows_affected, 1);
+        assert_eq!(out.kind, "update");
+        assert!(app_state.schema_cache.lock().unwrap().get("s").is_none());
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn agent_generate_title_handles_success_and_errors() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_without_session();
+
+        let err = agent_generate_title(app.handle().clone(), vec![])
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("history is empty"));
+
+        let server = MockServer::start().await;
+        write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "sk").await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": {"role":"assistant", "content":"Title: \"Analise de vendas.\""},
+                    "finish_reason":"stop"
+                }]
+            })))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": {"role":"assistant", "content":"   "},
+                    "finish_reason":"stop"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let ok = agent_generate_title(
+            app.handle().clone(),
+            vec![ChatTurn {
+                role: "user".into(),
+                content: "me mostre vendas por mes".into(),
+            }],
+        )
+        .await
+        .unwrap();
+        assert_eq!(ok, "Analise de vendas");
+
+        let err = agent_generate_title(
+            app.handle().clone(),
+            vec![ChatTurn {
+                role: "assistant".into(),
+                content: "ok".into(),
+            }],
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("empty title"));
     }
 }
