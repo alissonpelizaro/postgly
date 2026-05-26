@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, CheckCircle2, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, CheckCircle2, Copy, Trash2 } from "lucide-react";
 
 import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -16,7 +16,12 @@ interface ResultGridProps {
   onRowOpen?: (rowIndex: number) => void;
   /** Called from the right-click menu; enables the delete affordance. */
   onRowDelete?: (rowIndex: number) => void;
+  /** Called from the right-click menu; enables the duplicate affordance. */
+  onRowDuplicate?: (rowIndex: number) => void;
 }
+
+const DEFAULT_COL_WIDTH = 200;
+const MIN_COL_WIDTH = 60;
 
 /** Renders a query result: a data grid, or a confirmation for statements
  * that return no rows (INSERT / UPDATE / DDL). */
@@ -26,6 +31,7 @@ export function ResultGrid({
   onSort,
   onRowOpen,
   onRowDelete,
+  onRowDuplicate,
 }: ResultGridProps) {
   const { t } = useI18n();
   // Right-click row menu: viewport coords plus the targeted row index.
@@ -34,6 +40,16 @@ export function ResultGrid({
     y: number;
     rowIndex: number;
   } | null>(null);
+
+  // Per-column widths. Empty until the user drags a resizer.
+  const [widths, setWidths] = useState<Record<string, number>>({});
+  const resizingRef = useRef(false);
+
+  // Reset widths when the column set changes (new table or different query).
+  const colsKey = result.columns.join("|");
+  useEffect(() => {
+    setWidths({});
+  }, [colsKey]);
 
   useEffect(() => {
     if (!menu) return;
@@ -45,6 +61,29 @@ export function ResultGrid({
       window.removeEventListener("scroll", close, true);
     };
   }, [menu]);
+
+  const startResize = (col: string, e: React.MouseEvent<HTMLSpanElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingRef.current = true;
+    const startX = e.clientX;
+    const th = (e.currentTarget.parentElement as HTMLElement) ?? null;
+    const startWidth = widths[col] ?? th?.offsetWidth ?? DEFAULT_COL_WIDTH;
+    const onMove = (ev: MouseEvent) => {
+      const w = Math.max(MIN_COL_WIDTH, startWidth + (ev.clientX - startX));
+      setWidths((s) => ({ ...s, [col]: w }));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      // Defer clearing so the bubbled click on the header doesn't toggle sort.
+      setTimeout(() => {
+        resizingRef.current = false;
+      }, 0);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
   if (result.columns.length === 0) {
     return (
@@ -61,7 +100,16 @@ export function ResultGrid({
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full border-collapse text-sm">
+        <table className="w-full border-collapse text-sm" style={{ tableLayout: "fixed" }}>
+          <colgroup>
+            <col style={{ width: 56 }} />
+            {result.columns.map((col) => (
+              <col
+                key={col}
+                style={{ width: widths[col] ?? DEFAULT_COL_WIDTH }}
+              />
+            ))}
+          </colgroup>
           <thead className="sticky top-0 z-10 bg-muted">
             <tr className="text-left">
               <th className="border-b border-border px-2 py-1.5 text-xs font-medium text-muted-foreground">
@@ -72,21 +120,30 @@ export function ResultGrid({
                 return (
                   <th
                     key={col}
-                    onClick={() => onSort?.(col)}
+                    onClick={() => {
+                      if (resizingRef.current) return;
+                      onSort?.(col);
+                    }}
                     className={cn(
-                      "border-b border-l border-border px-3 py-1.5 font-medium",
+                      "relative border-b border-l border-border px-3 py-1.5 font-medium",
                       onSort && "cursor-pointer select-none hover:bg-accent",
                     )}
                   >
-                    <span className="flex items-center gap-1">
-                      {col}
+                    <span className="flex items-center gap-1 truncate pr-2">
+                      <span className="truncate">{col}</span>
                       {sorted &&
                         (sort?.descending ? (
-                          <ArrowDown className="size-3 text-muted-foreground" />
+                          <ArrowDown className="size-3 shrink-0 text-muted-foreground" />
                         ) : (
-                          <ArrowUp className="size-3 text-muted-foreground" />
+                          <ArrowUp className="size-3 shrink-0 text-muted-foreground" />
                         ))}
                     </span>
+                    <span
+                      onMouseDown={(e) => startResize(col, e)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize select-none hover:bg-accent-foreground/30"
+                      aria-hidden="true"
+                    />
                   </th>
                 );
               })}
@@ -98,13 +155,13 @@ export function ResultGrid({
                 key={i}
                 onDoubleClick={() => onRowOpen?.(i)}
                 onContextMenu={(e) => {
-                  if (!onRowDelete) return;
+                  if (!onRowDelete && !onRowDuplicate) return;
                   e.preventDefault();
                   setMenu({ x: e.clientX, y: e.clientY, rowIndex: i });
                 }}
                 className={cn(
                   "hover:bg-accent/40",
-                  (onRowOpen || onRowDelete) && "cursor-pointer",
+                  (onRowOpen || onRowDelete || onRowDuplicate) && "cursor-pointer",
                   menu?.rowIndex === i && "bg-accent/60",
                 )}
               >
@@ -115,7 +172,7 @@ export function ResultGrid({
                   <td
                     key={j}
                     title={cell ?? undefined}
-                    className="max-w-xs truncate border-b border-l border-border/60 px-3 py-1"
+                    className="truncate border-b border-l border-border/60 px-3 py-1"
                   >
                     {cell === null ? (
                       <span className="italic text-muted-foreground">NULL</span>
@@ -138,22 +195,37 @@ export function ResultGrid({
         )}
       </div>
 
-      {menu && onRowDelete && (
+      {menu && (onRowDelete || onRowDuplicate) && (
         <div
           className="fixed z-50 min-w-44 rounded-md border border-border bg-popover p-1 shadow-md"
           style={{ left: menu.x, top: menu.y }}
         >
-          <button
-            type="button"
-            onClick={() => {
-              onRowDelete(menu.rowIndex);
-              setMenu(null);
-            }}
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
-          >
-            <Trash2 className="size-4" />
-            {t("explorer.deleteRecord")}
-          </button>
+          {onRowDuplicate && (
+            <button
+              type="button"
+              onClick={() => {
+                onRowDuplicate(menu.rowIndex);
+                setMenu(null);
+              }}
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            >
+              <Copy className="size-4" />
+              {t("explorer.duplicateRecord")}
+            </button>
+          )}
+          {onRowDelete && (
+            <button
+              type="button"
+              onClick={() => {
+                onRowDelete(menu.rowIndex);
+                setMenu(null);
+              }}
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+            >
+              <Trash2 className="size-4" />
+              {t("explorer.deleteRecord")}
+            </button>
+          )}
         </div>
       )}
     </div>
