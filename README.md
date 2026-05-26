@@ -2,7 +2,9 @@
 
 <img src="src/assets/postgly-logo-named.png" alt="Postgly" width="200" />
 
-**Talk to your PostgreSQL — local-first client with a built-in AI agent.**
+**What if you could talk to your PostgreSQL?**
+
+_local-first client with a built-in AI agent_
 
 [![CI](https://github.com/alissonpelizaro/postgly/actions/workflows/ci.yml/badge.svg)](https://github.com/alissonpelizaro/postgly/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/alissonpelizaro/postgly?style=flat-square&color=blue)](https://github.com/alissonpelizaro/postgly/releases/latest)
