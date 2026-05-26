@@ -4,16 +4,9 @@
 
 **Talk to your PostgreSQL — local-first client with a built-in AI agent.**
 
-[![Latest release](https://img.shields.io/github/v/release/alissonpelizaro/postgly?style=flat-square)](https://github.com/alissonpelizaro/postgly/releases/latest)
+[![CI](https://github.com/alissonpelizaro/postgly/actions/workflows/ci.yml/badge.svg)](https://github.com/alissonpelizaro/postgly/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/alissonpelizaro/postgly?style=flat-square&color=blue)](https://github.com/alissonpelizaro/postgly/releases/latest)
 [![License](https://img.shields.io/badge/license-Private-lightgrey?style=flat-square)](#license)
-
-### ⬇️ Download
-
-[**macOS — Apple Silicon**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-arm64.dmg) ·
-[**macOS — Intel**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-x64.dmg) ·
-[**Windows (.exe)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64-setup.exe) ·
-[**Linux (.AppImage)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-x86_64.AppImage) ·
-[**Linux (.deb)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-amd64.deb)
 
 </div>
 
