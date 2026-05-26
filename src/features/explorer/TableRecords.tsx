@@ -61,6 +61,7 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
   const [openRow, setOpenRow] = useState<number | null>(null);
   const [deleteIdx, setDeleteIdx] = useState<number | null>(null);
   const [showInsert, setShowInsert] = useState(false);
+  const [duplicateRow, setDuplicateRow] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedSql, setSelectedSql] = useState("");
   const [sqlText, setSqlText] = useState(
@@ -329,6 +330,11 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
                 ? setDeleteIdx
                 : undefined
             }
+            onRowDuplicate={
+              mode === "filter" && tableColumns.length > 0
+                ? setDuplicateRow
+                : undefined
+            }
           />
         ) : null}
       </div>
@@ -384,6 +390,22 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
           pkColumns={pkColumns}
           onSave={saveInsert}
           onClose={() => setShowInsert(false)}
+        />
+      )}
+
+      {duplicateRow !== null && result && (
+        <RecordDialog
+          mode="insert"
+          columns={tableColumns.map((c) => c.name)}
+          types={columnTypes}
+          pkColumns={pkColumns}
+          initialValues={Object.fromEntries(
+            result.columns
+              .map((col, j) => [col, result.rows[duplicateRow][j]] as const)
+              .filter(([col]) => !pkColumns.includes(col)),
+          )}
+          onSave={saveInsert}
+          onClose={() => setDuplicateRow(null)}
         />
       )}
 

@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
-import { AlertCircle, KeyRound, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertCircle, KeyRound, Loader2, Pencil } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import { explorerApi } from "./api";
+import { TableEditorDialog } from "./TableEditorDialog";
 import type { TableDetails, TableRef } from "./types";
 
 interface TableStructureProps {
@@ -18,8 +20,9 @@ export function TableStructure({ sessionId, table }: TableStructureProps) {
   const [details, setDetails] = useState<TableDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true);
     setError(null);
     explorerApi
@@ -28,6 +31,10 @@ export function TableStructure({ sessionId, table }: TableStructureProps) {
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, [sessionId, table.schema, table.name]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -50,6 +57,24 @@ export function TableStructure({ sessionId, table }: TableStructureProps) {
 
   return (
     <div className="flex flex-col gap-6 overflow-y-auto p-5">
+      <div className="flex justify-end">
+        <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+          <Pencil />
+          {t("explorer.createTable.editTitle")}
+        </Button>
+      </div>
+
+      {editing && (
+        <TableEditorDialog
+          mode="edit"
+          sessionId={sessionId}
+          schema={table.schema}
+          table={table.name}
+          onApplied={load}
+          onClose={() => setEditing(false)}
+        />
+      )}
+
       <Section title={t("explorer.columns")} count={details.columns.length}>
         <table className="w-full border-collapse text-sm">
           <thead>

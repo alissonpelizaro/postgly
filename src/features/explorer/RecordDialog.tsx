@@ -28,6 +28,8 @@ interface RecordDialogProps {
   pkColumns: string[];
   /** The row's cell values, aligned with `columns` (edit mode only). */
   row?: (string | null)[];
+  /** Initial values to seed an insert form (e.g. duplicate-record flow). */
+  initialValues?: Record<string, string | null>;
   /** Persist the row; rejects with an error string on failure. */
   onSave: (values: CellValue[]) => Promise<void>;
   onClose: () => void;
@@ -36,6 +38,17 @@ interface RecordDialogProps {
 /** `true` for Postgres JSON column types. */
 const isJsonType = (type: string | undefined) =>
   type === "json" || type === "jsonb";
+
+/** `true` for Postgres boolean column types. */
+const isBoolType = (type: string | undefined) =>
+  type === "boolean" || type === "bool";
+
+/** Parse a Postgres bool string ("t"/"f"/"true"/"false"/"1"/"0"). */
+const parseBool = (raw: string | null | undefined): boolean => {
+  if (raw === null || raw === undefined) return false;
+  const v = raw.toLowerCase();
+  return v === "true" || v === "t" || v === "1" || v === "yes";
+};
 
 /** Pretty-print a JSON string; returns the input unchanged if invalid. */
 function prettyJson(raw: string): string {
@@ -60,14 +73,25 @@ export function RecordDialog({
   types,
   pkColumns,
   row,
+  initialValues,
   onSave,
   onClose,
 }: RecordDialogProps) {
   const { t } = useI18n();
   // The value shown at open: edit seeds from the row (JSON pretty-printed),
-  // insert leaves every field `undefined` (untouched).
+  // insert leaves every field `undefined` (untouched) unless seeded via
+  // `initialValues` (duplicate flow).
   const initial = useMemo<Record<string, string | null | undefined>>(() => {
     if (mode === "insert") {
+      if (initialValues) {
+        return Object.fromEntries(
+          columns.map((c) => {
+            const v = initialValues[c];
+            if (v === undefined) return [c, undefined];
+            return [c, v !== null && isJsonType(types[c]) ? prettyJson(v) : v];
+          }),
+        );
+      }
       return Object.fromEntries(columns.map((c) => [c, undefined]));
     }
     return Object.fromEntries(
@@ -76,7 +100,7 @@ export function RecordDialog({
         return [c, raw !== null && isJsonType(types[c]) ? prettyJson(raw) : raw];
       }),
     );
-  }, [mode, columns, row, types]);
+  }, [mode, columns, row, types, initialValues]);
 
   // Edited values. `null` is SQL NULL; `undefined` means untouched.
   const [draft, setDraft] =
@@ -136,6 +160,7 @@ export function RecordDialog({
             const isPk = pkColumns.includes(column);
             const locked = (mode === "edit" && isPk) || !editable;
             const json = isJsonType(types[column]);
+            const bool = isBoolType(types[column]);
             const value = draft[column];
             const isNull = value === null;
             return (
@@ -152,7 +177,7 @@ export function RecordDialog({
                   <button
                     type="button"
                     disabled={locked || saving}
-                    onClick={() => setValue(column, isNull ? "" : null)}
+                    onClick={() => setValue(column, isNull ? (bool ? "false" : "") : null)}
                     className={cn(
                       "text-[10px] uppercase tracking-wide transition-colors",
                       isNull
@@ -164,26 +189,55 @@ export function RecordDialog({
                     NULL
                   </button>
                 </div>
-                <textarea
-                  value={value ?? ""}
-                  disabled={locked || saving || isNull}
-                  placeholder={
-                    isNull
-                      ? "NULL"
-                      : mode === "insert"
-                        ? t("explorer.record.defaultPlaceholder")
-                        : ""
-                  }
-                  onChange={(e) => setValue(column, e.target.value)}
-                  rows={json ? 6 : 1}
-                  className={cn(
-                    "resize-y rounded-md border border-border bg-transparent px-3 py-1.5 text-sm",
-                    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                    "disabled:cursor-not-allowed disabled:opacity-60",
-                    json ? "min-h-24 font-mono text-xs" : "min-h-9",
-                    isNull && "italic placeholder:text-muted-foreground",
-                  )}
-                />
+                {bool ? (
+                  <label
+                    className={cn(
+                      "flex h-9 items-center gap-2 rounded-md border border-border bg-transparent px-3 text-sm",
+                      (locked || saving || isNull) && "cursor-not-allowed opacity-60",
+                      isNull && "italic text-muted-foreground",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={locked || saving || isNull}
+                      checked={!isNull && parseBool(value)}
+                      onChange={(e) =>
+                        setValue(column, e.target.checked ? "true" : "false")
+                      }
+                      className="size-4"
+                    />
+                    <span>
+                      {isNull
+                        ? "NULL"
+                        : value === undefined
+                          ? t("explorer.record.defaultPlaceholder")
+                          : parseBool(value)
+                            ? "true"
+                            : "false"}
+                    </span>
+                  </label>
+                ) : (
+                  <textarea
+                    value={value ?? ""}
+                    disabled={locked || saving || isNull}
+                    placeholder={
+                      isNull
+                        ? "NULL"
+                        : mode === "insert"
+                          ? t("explorer.record.defaultPlaceholder")
+                          : ""
+                    }
+                    onChange={(e) => setValue(column, e.target.value)}
+                    rows={json ? 6 : 1}
+                    className={cn(
+                      "resize-y rounded-md border border-border bg-transparent px-3 py-1.5 text-sm",
+                      "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                      "disabled:cursor-not-allowed disabled:opacity-60",
+                      json ? "min-h-24 font-mono text-xs" : "min-h-9",
+                      isNull && "italic placeholder:text-muted-foreground",
+                    )}
+                  />
+                )}
               </div>
             );
           })}

@@ -48,8 +48,8 @@ export function MessageList({
 
   if (messages.length === 0 && !pending) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-        {t("agentChat.empty")}
+      <div className="flex flex-col gap-3 p-3">
+        <GreetingBubble text={t("agentChat.greeting")} />
       </div>
     );
   }
@@ -330,6 +330,21 @@ function summarizeResult(result: unknown): string {
 
 function truncate(s: string, max: number): string {
   return s.length <= max ? s : `${s.slice(0, max - 1)}…`;
+}
+
+function GreetingBubble({ text }: { text: string }) {
+  return (
+    <div className="flex gap-2">
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-foreground">
+        <Bot className="size-3.5" />
+      </div>
+      <div className="flex max-w-[85%] min-w-0 flex-col gap-1.5">
+        <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground">
+          {text}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function TypingBubble() {

@@ -39,6 +39,9 @@ export function ExplorerScreen({ connection, onClose, onSessionChange }: Explore
   const [openError, setOpenError] = useState<string | null>(null);
   const [selected, setSelected] = useState<TableRef | null>(null);
   const [tab, setTab] = useState<DetailTab>("structure");
+  // Bumped after a destructive op on the selected table; appended to the
+  // detail-panel keys so the records / structure views remount and re-fetch.
+  const [mutationVersion, setMutationVersion] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -107,6 +110,20 @@ export function ExplorerScreen({ connection, onClose, onSessionChange }: Explore
                 setSelected(table);
                 setTab("structure");
               }}
+              onTableMutation={(op, schema, name) => {
+                if (op === "drop") {
+                  if (selected?.schema === schema && selected.name === name) {
+                    setSelected(null);
+                  }
+                  return;
+                }
+                if (
+                  selected?.schema === schema &&
+                  selected.name === name
+                ) {
+                  setMutationVersion((v) => v + 1);
+                }
+              }}
             />
           </ResizablePanel>
           <ResizableHandle withHandle />
@@ -117,6 +134,7 @@ export function ExplorerScreen({ connection, onClose, onSessionChange }: Explore
                 table={selected}
                 tab={tab}
                 onTabChange={setTab}
+                mutationVersion={mutationVersion}
               />
             ) : (
               <NoSelection />
@@ -133,10 +151,11 @@ interface DetailPanelProps {
   table: TableRef;
   tab: DetailTab;
   onTabChange: (tab: DetailTab) => void;
+  mutationVersion: number;
 }
 
 /** Right panel: tabbed view of the selected table. */
-function DetailPanel({ sessionId, table, tab, onTabChange }: DetailPanelProps) {
+function DetailPanel({ sessionId, table, tab, onTabChange, mutationVersion }: DetailPanelProps) {
   const { t } = useI18n();
   return (
     <div className="flex h-full flex-col">
@@ -156,13 +175,13 @@ function DetailPanel({ sessionId, table, tab, onTabChange }: DetailPanelProps) {
       <div className="min-h-0 flex-1">
         {tab === "structure" ? (
           <TableStructure
-            key={`structure:${table.schema}.${table.name}`}
+            key={`structure:${table.schema}.${table.name}:${mutationVersion}`}
             sessionId={sessionId}
             table={table}
           />
         ) : (
           <TableRecords
-            key={`records:${table.schema}.${table.name}`}
+            key={`records:${table.schema}.${table.name}:${mutationVersion}`}
             sessionId={sessionId}
             table={table}
           />
