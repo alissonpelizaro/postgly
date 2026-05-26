@@ -1,5 +1,15 @@
+import { useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Download, ExternalLink, Github, Heart, Loader2 } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Download,
+  ExternalLink,
+  Github,
+  Heart,
+  Loader2,
+  Terminal,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +26,52 @@ import type { VersionInfo } from "./use-version-check";
 const REPO_URL = "https://github.com/alissonpelizaro/postgly";
 const ISSUES_URL = `${REPO_URL}/issues`;
 const AUTHOR_URL = "https://github.com/alissonpelizaro";
+
+const INSTALL_SH_URL =
+  "https://raw.githubusercontent.com/alissonpelizaro/postgly/main/scripts/install.sh";
+const INSTALL_PS1_URL =
+  "https://raw.githubusercontent.com/alissonpelizaro/postgly/main/scripts/install.ps1";
+
+type UpdatePlatform = "macos" | "linux" | "windows" | "unknown";
+
+interface UpdateCommand {
+  platform: UpdatePlatform;
+  shell: string;
+  command: string;
+}
+
+function detectPlatform(): UpdatePlatform {
+  if (typeof navigator === "undefined") return "unknown";
+  const ua = `${navigator.userAgent} ${navigator.platform}`.toLowerCase();
+  if (ua.includes("mac")) return "macos";
+  if (ua.includes("win")) return "windows";
+  if (ua.includes("linux")) return "linux";
+  return "unknown";
+}
+
+function updateCommandFor(platform: UpdatePlatform): UpdateCommand {
+  switch (platform) {
+    case "windows":
+      return {
+        platform,
+        shell: "PowerShell",
+        command: `irm ${INSTALL_PS1_URL} | iex`,
+      };
+    case "macos":
+    case "linux":
+      return {
+        platform,
+        shell: platform === "macos" ? "Terminal (bash/zsh)" : "bash/zsh",
+        command: `curl -fsSL ${INSTALL_SH_URL} | bash`,
+      };
+    default:
+      return {
+        platform,
+        shell: "bash/zsh",
+        command: `curl -fsSL ${INSTALL_SH_URL} | bash`,
+      };
+  }
+}
 
 interface AboutDialogProps {
   open: boolean;
@@ -35,7 +91,7 @@ export function AboutDialog({ open, onOpenChange, version }: AboutDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg ">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <img src={logoUrl} alt="Postgly" className="size-12" />
@@ -108,9 +164,23 @@ function VersionBlock({
   version: VersionInfo;
   onDownload: () => void;
 }) {
+  const updateCmd = useMemo(() => updateCommandFor(detectPlatform()), []);
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(updateCmd.command);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard API unavailable — fall through silently; the user can still
+      // select the command manually.
+    }
+  };
+
   if (version.updateAvailable && version.latest) {
     return (
-      <div className="rounded-md border border-primary/40 bg-primary/10 p-3 text-sm">
+      <div className="max-w-115 flex flex-col space-y-3 overflow-hidden rounded-md border border-primary/40 bg-primary/10 p-3 text-sm">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="font-medium text-foreground">
@@ -120,10 +190,43 @@ function VersionBlock({
               Você está usando v{version.current}.
             </p>
           </div>
-          <Button size="sm" variant="gradient" onClick={onDownload}>
-            <Download className="size-4" />
-            Baixar
-          </Button>
+        </div>
+
+        <div className="min-w-0 space-y-2 overflow-hidden rounded-md border border-border bg-background/60 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <Terminal className="size-3.5 shrink-0" />
+              <span className="truncate">
+                Atualize com um comando ({updateCmd.shell})
+              </span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onCopy}
+              className="h-7 shrink-0 px-2 text-xs"
+              title="Copiar comando"
+            >
+              {copied ? (
+                <>
+                  <Check className="size-3.5" />
+                  Copiado
+                </>
+              ) : (
+                <>
+                  <Copy className="size-3.5" />
+                  Copiar
+                </>
+              )}
+            </Button>
+          </div>
+          <pre className="max-w-full overflow-x-auto rounded border border-border bg-muted/50 px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-foreground">
+            <code className="whitespace-pre">{updateCmd.command}</code>
+          </pre>
+          <p className="text-[11px] mt-2 leading-relaxed text-muted-foreground">
+            O script baixa o instalador, aplica a atualização e remove os
+            arquivos temporários. Feche o Postgly antes de executar.
+          </p>
         </div>
       </div>
     );

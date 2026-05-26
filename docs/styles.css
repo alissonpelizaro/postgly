@@ -448,8 +448,29 @@ html[data-theme="light"] .dl pre {
 .dl-notes summary::-webkit-details-marker { display: none; }
 .dl-notes summary::before { content: "▸ "; color: var(--accent); }
 .dl-notes[open] summary::before { content: "▾ "; }
-.dl-notes ol { padding-left: 18px; }
+.dl-notes ol, .dl-notes ul { padding-left: 18px; }
+.dl-notes ul li { margin-bottom: 4px; }
+.dl-notes a { color: var(--accent); font-weight: 500; }
 .dl-notes pre { font-size: 12.5px; padding: 10px 12px; margin: 8px 0; max-width: 100%; }
+.dl-cmd {
+  position: relative;
+  font-size: 12.5px;
+  padding: 12px 14px;
+  margin: 4px 0 14px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-x: auto;
+  white-space: pre;
+}
+.dl-cmd code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--fg);
+  font-size: 12.5px;
+  white-space: pre;
+}
 .dl-notes p { margin: 10px 0 4px; }
 .dl-notes ol li { margin-bottom: 6px; }
 .dl-foot { text-align: center; color: var(--fg-muted); margin-top: 24px; font-size: 14.5px; }
