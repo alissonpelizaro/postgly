@@ -34,13 +34,44 @@ Open the brain button on the top bar and a real agent sits next to your tables. 
 
 ## 📦 Install
 
-Installers are **unsigned** — first-launch warnings on macOS and Windows are expected.
+Installers are **unsigned** — the scripts below download the latest release, install it to the standard location, and clear the macOS quarantine attribute for you. One command per OS.
 
-### 🍎 macOS
+### 🍎 macOS &nbsp;·&nbsp; 🐧 Linux
 
-Download: [**macOS — Apple Silicon**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-arm64.dmg) or [**macOS — Intel**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-x64.dmg) ·
+```bash
+curl -fsSL https://raw.githubusercontent.com/alissonpelizaro/postgly/main/scripts/install.sh | bash
+```
 
-Open the `.dmg`, drag **Postgly.app** into `/Applications`, then clear the quarantine attribute (one-time):
+- macOS: downloads the right `.dmg` for your CPU (Apple Silicon or Intel), copies `Postgly.app` to `/Applications`, runs `xattr -cr` to clear quarantine.
+- Linux: downloads the AppImage to `~/.local/bin/postgly` and marks it executable.
+
+Pin a version with `POSTGLY_VERSION=v0.1.0 curl … | bash`.
+
+### 🪟 Windows
+
+In PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/alissonpelizaro/postgly/main/scripts/install.ps1 | iex
+```
+
+Downloads the installer, removes the Mark of the Web (reduces SmartScreen friction), runs the installer. SmartScreen may still show *"Windows protected your PC"* on first launch — click **More info → Run anyway**.
+
+---
+
+### Alternative: manual download
+
+If you prefer not to run a remote script, download the asset and install by hand.
+
+| OS | Asset |
+|---|---|
+| macOS — Apple Silicon | [Postgly-macos-arm64.dmg](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-arm64.dmg) |
+| macOS — Intel | [Postgly-macos-x64.dmg](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-macos-x64.dmg) |
+| Windows | [Postgly-windows-x64-setup.exe](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64-setup.exe) |
+| Linux AppImage | [Postgly-linux-x86_64.AppImage](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-x86_64.AppImage) |
+| Debian / Ubuntu | [Postgly-linux-amd64.deb](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-amd64.deb) |
+
+**macOS** — open the `.dmg`, drag **Postgly.app** into `/Applications`, then clear the quarantine attribute (required, the bundle is unsigned):
 
 ```bash
 xattr -cr /Applications/Postgly.app
@@ -48,23 +79,15 @@ xattr -cr /Applications/Postgly.app
 
 Without this, macOS refuses to launch with *"Postgly is damaged"*.
 
-### 🪟 Windows
+**Windows** — run the `.exe`. SmartScreen may show *"Windows protected your PC"* — click **More info → Run anyway**.
 
-Download: [**Windows (.exe)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-windows-x64-setup.exe)
-
-Run the `.exe` installer. SmartScreen may show *"Windows protected your PC"* — click **More info → Run anyway**.
-
-### 🐧 Linux
-
-#### AppImage
-Download: [**Linux (.AppImage)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-x86_64.AppImage)
+**Linux AppImage**:
 
 ```bash
 chmod +x Postgly-linux-x86_64.AppImage && ./Postgly-linux-x86_64.AppImage
 ```
 
-#### Debian / Ubuntu
-Download: [**Linux (.deb)**](https://github.com/alissonpelizaro/postgly/releases/latest/download/Postgly-linux-amd64.deb)
+**Debian / Ubuntu**:
 
 ```bash
 sudo dpkg -i Postgly-linux-amd64.deb && sudo apt-get install -f
