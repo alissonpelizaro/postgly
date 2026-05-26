@@ -3,7 +3,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Check,
   Copy,
-  Download,
   ExternalLink,
   Github,
   Heart,
@@ -105,7 +104,7 @@ export function AboutDialog({ open, onOpenChange, version }: AboutDialogProps) {
         </DialogHeader>
 
         <div className="space-y-4">
-          <VersionBlock version={version} onDownload={() => version.releaseUrl && open_(version.releaseUrl)} />
+          <VersionBlock version={version} />
 
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
             <dt className="text-muted-foreground">Autor</dt>
@@ -157,13 +156,7 @@ export function AboutDialog({ open, onOpenChange, version }: AboutDialogProps) {
   );
 }
 
-function VersionBlock({
-  version,
-  onDownload,
-}: {
-  version: VersionInfo;
-  onDownload: () => void;
-}) {
+function VersionBlock({ version }: { version: VersionInfo }) {
   const updateCmd = useMemo(() => updateCommandFor(detectPlatform()), []);
   const [copied, setCopied] = useState(false);
 
