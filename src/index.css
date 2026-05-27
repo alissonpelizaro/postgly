@@ -520,6 +520,66 @@ html.dark[data-color="yellow"] {
     outline: none;
   }
 
+  /* highlight.js token theme — token colours driven by CSS vars so the
+   * theme tracks light/dark mode without importing two stylesheets. */
+  :root {
+    --hl-comment:  oklch(0.55 0.02 270);
+    --hl-keyword:  oklch(0.48 0.22 286);
+    --hl-string:   oklch(0.5  0.15 150);
+    --hl-number:   oklch(0.55 0.18 25);
+    --hl-builtin:  oklch(0.5  0.18 211);
+    --hl-type:     oklch(0.55 0.16 60);
+    --hl-title:    oklch(0.45 0.16 286);
+    --hl-attr:     oklch(0.55 0.14 211);
+    --hl-tag:      oklch(0.5  0.18 350);
+    --hl-meta:     oklch(0.55 0.05 270);
+  }
+  .dark {
+    --hl-comment:  oklch(0.6  0.02 270);
+    --hl-keyword:  oklch(0.78 0.18 286);
+    --hl-string:   oklch(0.78 0.15 150);
+    --hl-number:   oklch(0.78 0.18 25);
+    --hl-builtin:  oklch(0.78 0.15 211);
+    --hl-type:     oklch(0.82 0.15 60);
+    --hl-title:    oklch(0.82 0.14 286);
+    --hl-attr:     oklch(0.8  0.13 211);
+    --hl-tag:      oklch(0.78 0.18 350);
+    --hl-meta:     oklch(0.7  0.04 270);
+  }
+  .hljs                              { color: var(--foreground); background: transparent; }
+  .hljs-comment,
+  .hljs-quote                        { color: var(--hl-comment); font-style: italic; }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-section,
+  .hljs-doctag                       { color: var(--hl-keyword); font-weight: 600; }
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-addition                     { color: var(--hl-string); }
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-bullet                       { color: var(--hl-number); }
+  .hljs-built_in,
+  .hljs-builtin-name                 { color: var(--hl-builtin); }
+  .hljs-type,
+  .hljs-class .hljs-title,
+  .hljs-params                       { color: var(--hl-type); }
+  .hljs-title,
+  .hljs-name,
+  .hljs-selector-id,
+  .hljs-selector-class               { color: var(--hl-title); font-weight: 600; }
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-variable,
+  .hljs-template-variable            { color: var(--hl-attr); }
+  .hljs-tag                          { color: var(--hl-tag); }
+  .hljs-meta,
+  .hljs-meta-keyword                 { color: var(--hl-meta); }
+  .hljs-deletion                     { color: var(--destructive); }
+  .hljs-emphasis                     { font-style: italic; }
+  .hljs-strong                       { font-weight: 700; }
+
   /* Typing indicator dots — staggered opacity/scale pulse. */
   @keyframes typing-dot {
     0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
