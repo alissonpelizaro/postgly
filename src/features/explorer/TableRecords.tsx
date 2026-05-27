@@ -3,6 +3,7 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  Gauge,
   History,
   Loader2,
   Play,
@@ -20,6 +21,7 @@ import { settingsApi } from "@/features/settings/api";
 import { explorerApi } from "./api";
 import { CommandHistory } from "./CommandHistory";
 import { DestructiveConfirmDialog } from "./DestructiveConfirmDialog";
+import { ExplainDialog } from "./ExplainDialog";
 import { NlQueryBar } from "./NlQueryBar";
 import { QuickFilter } from "./QuickFilter";
 import { RecordDialog } from "./RecordDialog";
@@ -28,6 +30,7 @@ import { SqlEditor } from "./SqlEditor";
 import type {
   CellValue,
   ColumnInfo,
+  DatabaseSchema,
   OrderBy,
   QueryResult,
   RowFilter,
@@ -81,12 +84,20 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<RowFilter | null>(null);
   const [sort, setSort] = useState<OrderBy | null>(null);
+  /** SQL-mode pager state. `lastSql` is the user's original statement,
+   *  cached so the next/prev buttons can re-fetch with a different
+   *  OFFSET without forcing the user to re-click "Run". */
+  const [lastSql, setLastSql] = useState<string | null>(null);
+  const [sqlPage, setSqlPage] = useState(0);
+  const [sqlSort, setSqlSort] = useState<OrderBy | null>(null);
   const [tableColumns, setTableColumns] = useState<ColumnInfo[]>([]);
+  const [dbSchema, setDbSchema] = useState<DatabaseSchema | null>(null);
   const [openRow, setOpenRow] = useState<number | null>(null);
   const [deleteIdx, setDeleteIdx] = useState<number | null>(null);
   const [showInsert, setShowInsert] = useState(false);
   const [duplicateRow, setDuplicateRow] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [explainSql, setExplainSql] = useState<string | null>(null);
   const [selectedSql, setSelectedSql] = useState("");
   const [sqlText, setSqlText] = useState(
     `SELECT * FROM "${table.schema}"."${table.name}" LIMIT 100;`,
@@ -159,6 +170,24 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
       .catch(() => setTableColumns([]));
   }, [sessionId, table.schema, table.name]);
 
+  // Full session schema powers the SQL editor's autocompletion. Cached
+  // server-side, so this is cheap; we still only ask for it once per
+  // session because cache invalidation is driven by DDL elsewhere.
+  useEffect(() => {
+    let cancelled = false;
+    explorerApi
+      .getDatabaseSchema(sessionId)
+      .then((s) => {
+        if (!cancelled) setDbSchema(s);
+      })
+      .catch(() => {
+        if (!cancelled) setDbSchema(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
   const applyFilter = (f: RowFilter | null) => {
     setFilter(f);
     setPage(0);
@@ -184,11 +213,15 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
   };
 
   const executeSql = useCallback(
-    async (sql: string) => {
+    async (
+      sql: string,
+      options?: { offset?: number; orderBy?: OrderBy | null },
+    ) => {
       setLoading(true);
       setError(null);
       try {
-        setResult(await explorerApi.runQuery(sessionId, sql));
+        setResult(await explorerApi.runQuery(sessionId, sql, options));
+        setLastSql(sql);
       } catch (e) {
         setError(String(e));
         setResult(null);
@@ -199,9 +232,35 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
     [sessionId],
   );
 
+  const cycleSqlSort = (column: string) => {
+    const next: OrderBy | null =
+      !sqlSort || sqlSort.column !== column
+        ? { column, descending: false }
+        : !sqlSort.descending
+          ? { column, descending: true }
+          : null;
+    setSqlSort(next);
+    setSqlPage(0);
+    if (lastSql) void executeSql(lastSql, { offset: 0, orderBy: next });
+  };
+
+  const goToSqlPage = (p: number) => {
+    if (!lastSql) return;
+    setSqlPage(p);
+    void executeSql(lastSql, {
+      offset: p * (result?.row_cap ?? 1000),
+      orderBy: sqlSort,
+    });
+  };
+
   const runSql = async () => {
     const sql = selectedSql.trim() || sqlText;
     if (!sql.trim()) return;
+
+    // A fresh Run resets pagination and sort — those only make sense
+    // against the previously-executed SQL.
+    setSqlPage(0);
+    setSqlSort(null);
 
     // Check the guard setting + analyse the statement. If the user has
     // opted out of confirmations we go straight to execute.
@@ -362,6 +421,8 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
 
   const rowCount = result?.rows.length ?? 0;
   const hasNextPage = mode === "filter" && rowCount === PAGE_SIZE;
+  const sqlPaginated = mode === "sql" && !!result?.paginated;
+  const sqlHasNext = sqlPaginated && !!result?.has_more;
 
   return (
     <div className="flex h-full flex-col">
@@ -417,12 +478,26 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
                 onChange={setSqlText}
                 onRun={runSql}
                 onSelectionChange={setSelectedSql}
+                schema={dbSchema}
+                defaultSchema={table.schema}
               />
             </div>
             <div className="flex items-center gap-2">
               <Button size="sm" onClick={runSql} disabled={loading}>
                 {loading ? <Loader2 className="animate-spin" /> : <Play />}
                 {selectedSql.trim() ? t("explorer.runSelection") : t("explorer.run")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={loading || !(selectedSql.trim() || sqlText.trim())}
+                onClick={() =>
+                  setExplainSql((selectedSql.trim() || sqlText).trim())
+                }
+                title={t("explorer.explainDesc")}
+              >
+                <Gauge />
+                {t("explorer.explain")}
               </Button>
               <span className="text-xs text-muted-foreground">⌘/Ctrl + ↵</span>
             </div>
@@ -445,8 +520,14 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
         ) : result ? (
           <ResultGrid
             result={result}
-            sort={mode === "filter" ? sort : null}
-            onSort={mode === "filter" ? cycleSort : undefined}
+            sort={mode === "filter" ? sort : sqlSort}
+            onSort={
+              mode === "filter"
+                ? cycleSort
+                : sqlPaginated
+                  ? cycleSqlSort
+                  : undefined
+            }
             onRowOpen={mode === "filter" ? setOpenRow : undefined}
             onRowDelete={
               mode === "filter" && pkColumns.length > 0
@@ -466,6 +547,7 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
         <span>
           {result ? t("common.rowsCount", { n: rowCount }) : "—"}
           {mode === "filter" && ` · ${t("common.page", { n: page + 1 })}`}
+          {sqlPaginated && ` · ${t("common.page", { n: sqlPage + 1 })}`}
         </span>
         {mode === "filter" && (
           <div className="flex items-center gap-1">
@@ -485,6 +567,30 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
               className="size-7"
               disabled={!hasNextPage || loading}
               onClick={() => goToPage(page + 1)}
+              aria-label={t("common.nextPage")}
+            >
+              <ChevronRight />
+            </Button>
+          </div>
+        )}
+        {sqlPaginated && (
+          <div className="flex items-center gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-7"
+              disabled={sqlPage === 0 || loading}
+              onClick={() => goToSqlPage(sqlPage - 1)}
+              aria-label={t("common.previousPage")}
+            >
+              <ChevronLeft />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-7"
+              disabled={!sqlHasNext || loading}
+              onClick={() => goToSqlPage(sqlPage + 1)}
               aria-label={t("common.nextPage")}
             >
               <ChevronRight />
@@ -540,6 +646,14 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
           destructive
           onConfirm={confirmDelete}
           onCancel={() => setDeleteIdx(null)}
+        />
+      )}
+
+      {explainSql !== null && (
+        <ExplainDialog
+          sessionId={sessionId}
+          sql={explainSql}
+          onClose={() => setExplainSql(null)}
         />
       )}
 

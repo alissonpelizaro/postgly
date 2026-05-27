@@ -7,8 +7,8 @@ use crate::connections;
 use crate::db::{
     self,
     driver::{
-        CellValue, ConnectionConfig, DatabaseSchema, OrderBy, QueryResult, RowFilter, SchemaInfo,
-        TableDetails, TableInfo,
+        CellValue, ConnectionConfig, DatabaseSchema, ExportFormat, OrderBy, QueryResult, RowFilter,
+        SchemaInfo, TableDetails, TableInfo,
     },
     sql_safety::{self, SqlAnalysis},
 };
@@ -218,6 +218,39 @@ pub async fn analyze_statement(
     })
 }
 
+/// Run `EXPLAIN (FORMAT JSON)` against a single statement and return the
+/// raw JSON plan. When `analyze` is true the query is actually executed
+/// (`EXPLAIN ANALYZE`) so callers get real row counts and timings; this
+/// also means side-effects fire for DML, so the UI must gate it.
+#[tauri::command]
+pub async fn explain_query(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    sql: String,
+    analyze: bool,
+) -> AppResult<String> {
+    let driver = session_for(&state, &session_id)?;
+    let trimmed = sql.trim().trim_end_matches(';').trim();
+    if trimmed.is_empty() {
+        return Err(AppError::Other("empty SQL".into()));
+    }
+    let opts = if analyze {
+        "ANALYZE true, VERBOSE false, COSTS true, BUFFERS true, FORMAT JSON"
+    } else {
+        "ANALYZE false, VERBOSE false, COSTS true, FORMAT JSON"
+    };
+    let explain_sql = format!("EXPLAIN ({opts}) {trimmed}");
+    let result = driver.execute(&explain_sql).await?;
+    let json = result
+        .rows
+        .first()
+        .and_then(|r| r.first())
+        .and_then(|c| c.as_ref())
+        .ok_or_else(|| AppError::Other("EXPLAIN returned no rows".into()))?
+        .clone();
+    Ok(json)
+}
+
 /// Pull `Plan.Plan Rows` from the first row of `EXPLAIN (FORMAT JSON)`.
 ///
 /// For `UPDATE` / `DELETE`, the root node is `ModifyTable` and reports
@@ -245,14 +278,147 @@ fn plan_rows_for(plan: &serde_json::Value) -> Option<f64> {
     plan.get("Plan Rows").and_then(serde_json::Value::as_f64)
 }
 
-/// Run an arbitrary SQL statement from the editor.
+/// Page size used when wrapping a free-form `SELECT`. The wrapper
+/// requests `PAGE + 1` rows to detect whether more pages exist on the
+/// server, then trims back to `PAGE` before returning.
+const RUN_QUERY_PAGE_SIZE: usize = 1000;
+
+/// Result wrapper around [`QueryResult`] that lets `run_query` signal
+/// when the safety cap clipped the row set and where the current page
+/// sits inside the (unbounded) result set. Inlined into the JSON via
+/// `#[serde(flatten)]` so the front end sees a single object.
+#[derive(Debug, serde::Serialize)]
+pub struct CappedQueryResult {
+    #[serde(flatten)]
+    pub result: QueryResult,
+    /// `true` when the wrapper was applied (single SELECT-like statement
+    /// without an explicit LIMIT). Pagination controls only make sense
+    /// in this case.
+    pub paginated: bool,
+    /// `true` when there is at least one more row on the server beyond
+    /// the current page — drives the "next page" affordance.
+    pub has_more: bool,
+    /// Offset that produced this page (0 for the first page).
+    pub offset: i64,
+    /// Page size that was applied. Unset when the query bypassed the
+    /// wrapper.
+    pub row_cap: Option<usize>,
+}
+
+/// `true` when `sql` is a single read-only statement that we know how
+/// to wrap as a subquery to inject a LIMIT. `EXPLAIN`/`SHOW` and the
+/// like can't be subqueries in Postgres, so we leave them alone.
+///
+/// Note: a user-supplied `LIMIT` does NOT disable the wrapper — the
+/// outer LIMIT is a hard ceiling. If the user writes `LIMIT 1_000_000`
+/// the inner caps it at our `PAGE + 1`, so the UI never receives a
+/// runaway result set.
+fn is_cappable(analysis: &SqlAnalysis, sql: &str) -> bool {
+    if analysis.statements.len() != 1 {
+        return false;
+    }
+    let stmt = &analysis.statements[0];
+    if !matches!(stmt.kind, sql_safety::StatementKind::Select) {
+        return false;
+    }
+    let lower = sql.trim_start().to_lowercase();
+    matches!(
+        first_word(&lower).as_deref(),
+        Some("select") | Some("with") | Some("values") | Some("table"),
+    )
+}
+
+fn first_word(s: &str) -> Option<String> {
+    s.split(|c: char| !c.is_ascii_alphabetic())
+        .find(|w| !w.is_empty())
+        .map(|w| w.to_string())
+}
+
+/// Run an arbitrary SQL statement from the editor. Free-form `SELECT`
+/// queries without an explicit `LIMIT` are wrapped so the UI can page
+/// through the result set in chunks of [`RUN_QUERY_PAGE_SIZE`] instead
+/// of materialising millions of rows from `SELECT *`. The same wrapper
+/// also injects an optional `ORDER BY` so clicking a column header in
+/// SQL mode behaves like the filter view.
 #[tauri::command]
 pub async fn run_query(
     state: tauri::State<'_, AppState>,
     session_id: String,
     sql: String,
-) -> AppResult<QueryResult> {
-    session_for(&state, &session_id)?.execute(&sql).await
+    offset: Option<i64>,
+    order_by: Option<OrderBy>,
+) -> AppResult<CappedQueryResult> {
+    let session = session_for(&state, &session_id)?;
+    let analysis = sql_safety::analyze(&sql);
+
+    if !is_cappable(&analysis, &sql) {
+        let result = session.execute(&sql).await?;
+        return Ok(CappedQueryResult {
+            result,
+            paginated: false,
+            has_more: false,
+            offset: 0,
+            row_cap: None,
+        });
+    }
+
+    let off = offset.unwrap_or(0).max(0);
+    let order_clause = order_by
+        .as_ref()
+        .map(|o| {
+            format!(
+                " ORDER BY {ident} {dir}",
+                ident = format!("\"{}\"", o.column.replace('"', "\"\"")),
+                dir = if o.descending { "DESC" } else { "ASC" },
+            )
+        })
+        .unwrap_or_default();
+
+    let inner = sql.trim().trim_end_matches(';');
+    let wrapped = format!(
+        "SELECT * FROM ({inner}) AS __postgly_capped{order_clause} OFFSET {off} LIMIT {limit}",
+        limit = RUN_QUERY_PAGE_SIZE + 1,
+    );
+    let mut result = session.execute(&wrapped).await?;
+    let has_more = result.rows.len() > RUN_QUERY_PAGE_SIZE;
+    if has_more {
+        result.rows.truncate(RUN_QUERY_PAGE_SIZE);
+    }
+    Ok(CappedQueryResult {
+        result,
+        paginated: true,
+        has_more,
+        offset: off,
+        row_cap: Some(RUN_QUERY_PAGE_SIZE),
+    })
+}
+
+/// Stream a full table to a local file. Bypasses the `run_query` row
+/// cap because the rows never enter the JS heap — Postgres `COPY` is
+/// piped straight to disk. Returns the byte count for the UI receipt.
+#[derive(Debug, serde::Serialize)]
+pub struct ExportResult {
+    pub bytes_written: u64,
+    pub path: String,
+}
+
+#[tauri::command]
+pub async fn export_table(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    schema: String,
+    table: String,
+    format: ExportFormat,
+    path: String,
+) -> AppResult<ExportResult> {
+    let session = session_for(&state, &session_id)?;
+    let bytes_written = session
+        .copy_table_to_file(&schema, &table, format, std::path::Path::new(&path))
+        .await?;
+    Ok(ExportResult {
+        bytes_written,
+        path,
+    })
 }
 
 /// Update a single table row, addressed by its primary key.
@@ -472,6 +638,15 @@ mod tests {
         async fn disconnect(&mut self) -> AppResult<()> {
             Ok(())
         }
+        async fn copy_table_to_file(
+            &self,
+            _schema: &str,
+            _table: &str,
+            _format: crate::db::driver::ExportFormat,
+            _path: &std::path::Path,
+        ) -> AppResult<u64> {
+            Ok(0)
+        }
     }
 
     /// Build a mock Tauri app with a single fake session pre-installed.
@@ -543,10 +718,11 @@ mod tests {
     async fn run_query_passes_sql_to_driver() {
         let app = app_with_session("s");
         let state = app.state::<AppState>();
-        let res = run_query(state, "s".into(), "SELECT 1".into())
+        let res = run_query(state, "s".into(), "SELECT 1".into(), None, None)
             .await
             .unwrap();
-        assert_eq!(res.columns, vec!["x".to_string()]);
+        assert_eq!(res.result.columns, vec!["x".to_string()]);
+        assert!(!res.has_more);
     }
 
     #[tokio::test]

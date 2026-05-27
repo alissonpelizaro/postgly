@@ -45,6 +45,17 @@ export interface QueryResult {
   rows: (string | null)[][];
   /** Rows returned (SELECT) or affected (INSERT/UPDATE/DELETE). */
   rows_affected: number;
+  /** `true` when `run_query` wrapped a free-form `SELECT` to enforce
+   *  the safety cap. Drives the pager and header-sort affordances in
+   *  SQL mode. */
+  paginated?: boolean;
+  /** `true` when there is at least one more row on the server beyond
+   *  the current page — drives the "next page" button. */
+  has_more?: boolean;
+  /** Offset that produced this page (0 for the first page). */
+  offset?: number;
+  /** Effective page size that was applied (e.g. 1000). */
+  row_cap?: number | null;
 }
 
 /** A single column value: used to address a row (primary key) or to
@@ -133,6 +144,41 @@ export interface StatementInfo {
   has_where: boolean;
   /** First ~140 chars of the statement, whitespace-collapsed. */
   preview: string;
+}
+
+/** A single column within a [TableSchema] from the introspection cache. */
+export interface ColumnSchema {
+  name: string;
+  data_type: string;
+  nullable: boolean;
+  default: string | null;
+  is_primary_key: boolean;
+  comment: string | null;
+}
+
+/** A foreign-key constraint on a [TableSchema]. */
+export interface ForeignKeySchema {
+  name: string;
+  columns: string[];
+  ref_schema: string;
+  ref_table: string;
+  ref_columns: string[];
+}
+
+/** A single table/view from the full schema introspection. */
+export interface TableSchema {
+  schema: string;
+  name: string;
+  kind: "table" | "view" | "materializedview";
+  comment: string | null;
+  columns: ColumnSchema[];
+  primary_key: string[];
+  foreign_keys: ForeignKeySchema[];
+}
+
+/** Full introspected schema for an open connection (user schemas only). */
+export interface DatabaseSchema {
+  tables: TableSchema[];
 }
 
 /** Result of `analyze_statement` — used by the destructive-SQL guard. */

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AgentOutput,
   CellValue,
+  DatabaseSchema,
   NlHistoryEntry,
   OrderBy,
   QueryResult,
@@ -35,9 +36,21 @@ export const explorerApi = {
   describeTable: (sessionId: string, schema: string, table: string) =>
     invoke<TableDetails>("describe_table", { sessionId, schema, table }),
 
-  /** Run an arbitrary SQL statement from the editor. */
-  runQuery: (sessionId: string, sql: string) =>
-    invoke<QueryResult>("run_query", { sessionId, sql }),
+  /** Run an arbitrary SQL statement from the editor. Free-form `SELECT`
+   *  queries are wrapped server-side with `OFFSET N LIMIT 1000`; the
+   *  optional `offset` + `orderBy` flow through the wrapper so the UI
+   *  can paginate and sort without rewriting the user's SQL. */
+  runQuery: (
+    sessionId: string,
+    sql: string,
+    options?: { offset?: number; orderBy?: OrderBy | null },
+  ) =>
+    invoke<QueryResult>("run_query", {
+      sessionId,
+      sql,
+      offset: options?.offset ?? null,
+      orderBy: options?.orderBy ?? null,
+    }),
 
   /** Update a single table row, addressed by its primary key. */
   updateRow: (
@@ -105,10 +118,21 @@ export const explorerApi = {
   refreshDatabaseSchema: (sessionId: string) =>
     invoke<void>("refresh_database_schema", { sessionId }),
 
+  /** Full introspected schema (every user table with columns / PKs / FKs).
+   *  Cached server-side per session; cheap on repeat calls. */
+  getDatabaseSchema: (sessionId: string) =>
+    invoke<DatabaseSchema>("get_database_schema", { sessionId }),
+
   /** Classify a SQL string and (for destructive DML) ask Postgres for a
    *  row estimate via EXPLAIN. Used by the destructive-SQL guard. */
   analyzeStatement: (sessionId: string, sql: string) =>
     invoke<StatementAnalysis>("analyze_statement", { sessionId, sql }),
+
+  /** `EXPLAIN (FORMAT JSON) [ANALYZE]` — returns the raw plan JSON string.
+   *  `analyze: true` actually executes the query, so the caller must gate
+   *  it for DML. */
+  explainQuery: (sessionId: string, sql: string, analyze: boolean) =>
+    invoke<string>("explain_query", { sessionId, sql, analyze }),
 
   /** Browse a table's rows with an optional quick-filter, sort and pagination. */
   browseTable: (
@@ -128,5 +152,22 @@ export const explorerApi = {
       orderBy,
       limit,
       offset,
+    }),
+
+  /** Stream a full table to a local file via Postgres `COPY`. Bypasses
+   *  the `run_query` row cap because rows never enter the JS heap. */
+  exportTable: (
+    sessionId: string,
+    schema: string,
+    table: string,
+    format: "csv" | "jsonlines",
+    path: string,
+  ) =>
+    invoke<{ bytes_written: number; path: string }>("export_table", {
+      sessionId,
+      schema,
+      table,
+      format,
+      path,
     }),
 };

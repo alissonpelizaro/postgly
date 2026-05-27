@@ -14,6 +14,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions};
 use sqlx::{Column, Executor, Row};
+use std::path::Path;
+use tokio::io::AsyncWriteExt;
 
 use std::collections::HashMap;
 
@@ -666,6 +668,56 @@ impl DatabaseDriver for PostgresDriver {
             pool.close().await;
         }
         Ok(())
+    }
+
+    async fn copy_table_to_file(
+        &self,
+        schema: &str,
+        table: &str,
+        format: crate::db::driver::ExportFormat,
+        path: &Path,
+    ) -> AppResult<u64> {
+        use crate::db::driver::ExportFormat;
+        let pool = self.pool()?;
+        let table_ref = format!("{}.{}", quote_ident(schema), quote_ident(table));
+        let copy_sql = match format {
+            ExportFormat::Csv => {
+                format!("COPY {table_ref} TO STDOUT WITH (FORMAT csv, HEADER true)",)
+            }
+            ExportFormat::JsonLines => {
+                format!("COPY (SELECT row_to_json(__t) FROM {table_ref} AS __t) TO STDOUT",)
+            }
+        };
+
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| AppError::Query(e.to_string()))?;
+        let mut stream = conn
+            .copy_out_raw(&copy_sql)
+            .await
+            .map_err(|e| AppError::Query(e.to_string()))?;
+
+        let mut file = tokio::fs::File::create(path)
+            .await
+            .map_err(|e| AppError::Other(format!("create file: {e}")))?;
+
+        let mut bytes_written: u64 = 0;
+        use futures::TryStreamExt;
+        while let Some(chunk) = stream
+            .try_next()
+            .await
+            .map_err(|e| AppError::Query(e.to_string()))?
+        {
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| AppError::Other(format!("write file: {e}")))?;
+            bytes_written += chunk.len() as u64;
+        }
+        file.flush()
+            .await
+            .map_err(|e| AppError::Other(format!("flush file: {e}")))?;
+        Ok(bytes_written)
     }
 }
 

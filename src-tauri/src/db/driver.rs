@@ -190,6 +190,17 @@ pub struct DatabaseSchema {
 /// Implementations own their own connection/pool. Methods are async and
 /// the trait is `Send + Sync` so a driver can live inside Tauri-managed
 /// state and be shared across command invocations.
+/// File format for `copy_table_to_file`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExportFormat {
+    /// `COPY ... TO STDOUT WITH (FORMAT csv, HEADER true)`.
+    Csv,
+    /// One JSON object per line — newline-delimited JSON. Streams via
+    /// `COPY (SELECT row_to_json(t) FROM "s"."t" t) TO STDOUT`.
+    JsonLines,
+}
+
 #[async_trait]
 pub trait DatabaseDriver: Send + Sync {
     /// Which engine this driver speaks. Used once the UI surfaces the
@@ -263,6 +274,18 @@ pub trait DatabaseDriver: Send + Sync {
 
     /// Close the connection / pool.
     async fn disconnect(&mut self) -> AppResult<()>;
+
+    /// Stream a full table to a local file in the requested format. The
+    /// implementation must avoid materializing the whole result set in
+    /// memory — large tables should flow row-by-row from the server to
+    /// the file. Returns the number of bytes written.
+    async fn copy_table_to_file(
+        &self,
+        schema: &str,
+        table: &str,
+        format: ExportFormat,
+        path: &std::path::Path,
+    ) -> AppResult<u64>;
 }
 
 #[cfg(test)]
