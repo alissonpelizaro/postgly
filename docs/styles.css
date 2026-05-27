@@ -1,3 +1,33 @@
+/* ───────── scrollbars ─────────
+ * Thin, transparent, modern. Firefox uses the standard
+ * scrollbar-width/color pair; WebKit/Blink (Safari, Chrome, Edge,
+ * Tauri's webview) gets the ::-webkit-scrollbar overrides. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--fg-soft) 55%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg-soft) 45%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--fg-soft) 75%, transparent);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* ───────── tokens ───────── */
 :root {
   --bg: #ffffff;
@@ -294,7 +324,7 @@ html[data-theme="light"] .dl pre {
 /* Hero mock — agent conversation variant. Mirrors the in-app chat
  * panel: user bubble right-aligned, agent bubble with an embedded
  * approval card that waits on the human for a destructive write. */
-.mock-chat { gap: 10px; padding: 14px 14px 12px; }
+.mock-chat { gap: 6px; padding: 12px 14px 10px; }
 .mock-chat-head {
   display: flex; align-items: center; gap: 8px;
   font-size: 12px; color: var(--fg-soft);
@@ -314,14 +344,14 @@ html[data-theme="light"] .dl pre {
 }
 .bubble {
   max-width: 86%;
-  padding: 9px 12px; border-radius: 12px;
-  font-size: 13.5px; line-height: 1.5;
+  padding: 7px 10px; border-radius: 12px;
+  font-size: 12px; line-height: 1.45;
 }
 .bubble p { margin: 0; }
 .bubble code {
   background: color-mix(in srgb, #fff 8%, transparent);
   border-radius: 4px; padding: 0 4px;
-  font-family: var(--font-mono); font-size: 12.5px;
+  font-family: var(--font-mono); font-size: 11px;
 }
 .bubble.user {
   align-self: flex-end;
@@ -358,8 +388,8 @@ html[data-theme="light"] .dl pre {
 .ac-target { font-family: var(--font-mono); color: var(--fg); }
 .ac-rows { margin-left: auto; }
 .ac-sql {
-  margin: 0; padding: 10px 12px;
-  font-family: var(--font-mono); font-size: 12px; line-height: 1.55;
+  margin: 0; padding: 8px 10px;
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
   color: #d6def0; background: var(--bg-code);
   overflow-x: auto; white-space: pre;
 }
