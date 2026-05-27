@@ -22,6 +22,135 @@
   const yearEl = document.getElementById("year");
   if (yearEl) yearEl.textContent = String(new Date().getFullYear());
 
+  // Hero mock — agent conversation animation. Plays a short loop:
+  //   1. user turn fades in
+  //   2. typing dots for ~2s
+  //   3. agent reply + approval card fades in
+  //   4. waits for Approve / Reject (or auto-resets after 15s)
+  //   5. on choice, simulates the run and shows a result bubble,
+  //      then loops back to step 1 after a beat.
+  // Visibility/reduced-motion aware so it doesn't churn off-screen.
+  const heroChat = document.getElementById("hero-chat");
+  if (heroChat) {
+    const $ = (id) => document.getElementById(id);
+    const user = $("hc-user");
+    const typing1 = $("hc-typing");
+    const agent = $("hc-agent");
+    const approval = $("hc-approval");
+    const status = $("hc-approval-status");
+    const approve = $("hc-approve");
+    const reject = $("hc-reject");
+    const typing2 = $("hc-typing2");
+    const result = $("hc-result");
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const show = (el) => el && el.classList.add("in");
+    const hide = (el) => el && el.classList.remove("in");
+    const sleep = (ms) => new Promise((r) => setTimeout(r, reducedMotion ? 0 : ms));
+
+    let timers = [];
+    let pendingResolve = null;
+    const clearTimers = () => {
+      timers.forEach(clearTimeout);
+      timers = [];
+    };
+    const delay = (ms) =>
+      new Promise((resolve) => {
+        const t = setTimeout(resolve, reducedMotion ? 0 : ms);
+        timers.push(t);
+      });
+
+    const reset = () => {
+      clearTimers();
+      [user, typing1, agent, typing2, result].forEach(hide);
+      approval.removeAttribute("data-state");
+      status.textContent = "";
+      result.textContent = "";
+      pendingResolve = null;
+    };
+
+    const waitForChoice = () =>
+      new Promise((resolve) => {
+        pendingResolve = resolve;
+        // Auto-pick "approve" if the visitor doesn't engage — keeps the
+        // demo moving for passive viewers.
+        const t = setTimeout(() => {
+          if (pendingResolve) {
+            pendingResolve("approve");
+            pendingResolve = null;
+          }
+        }, reducedMotion ? 0 : 15000);
+        timers.push(t);
+      });
+
+    const onApprove = () => {
+      if (!pendingResolve) return;
+      const r = pendingResolve;
+      pendingResolve = null;
+      r("approve");
+    };
+    const onReject = () => {
+      if (!pendingResolve) return;
+      const r = pendingResolve;
+      pendingResolve = null;
+      r("reject");
+    };
+    approve.addEventListener("click", onApprove);
+    reject.addEventListener("click", onReject);
+
+    let running = false;
+    async function play() {
+      if (running) return;
+      running = true;
+      reset();
+      await delay(600);
+      show(user);
+      await delay(700);
+      show(typing1);
+      await delay(2000);
+      hide(typing1);
+      show(agent);
+
+      const choice = await waitForChoice();
+
+      if (choice === "approve") {
+        approval.dataset.state = "approved";
+        status.textContent = "Approved";
+        show(typing2);
+        await delay(900);
+        hide(typing2);
+        result.textContent = "✓ Done — 1 row inserted into public.customers.";
+        show(result);
+      } else {
+        approval.dataset.state = "rejected";
+        status.textContent = "Rejected";
+        result.textContent = "Got it — no changes were made.";
+        show(result);
+      }
+
+      await delay(5000);
+      running = false;
+      if (heroChat.dataset.paused !== "true") play();
+    }
+
+    // Only run when the hero is in view; pause off-screen to keep the
+    // page idle and CPU-friendly.
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            heroChat.dataset.paused = "false";
+            if (!running) play();
+          } else {
+            heroChat.dataset.paused = "true";
+          }
+        }
+      },
+      { threshold: 0.2 },
+    );
+    io.observe(heroChat);
+  }
+
   const lightbox = document.getElementById("lightbox");
   if (lightbox) {
     const imgEl = lightbox.querySelector(".lightbox-img");

@@ -160,39 +160,45 @@
                 <div class="mock-tree-item sub">▸ payments</div>
                 <div class="mock-tree-item">▸ analytics</div>
               </div>
-              <div class="mock-main mock-chat">
+              <div class="mock-main mock-chat font-small" id="hero-chat" data-state="intro">
                 <div class="mock-chat-head">
                   <span class="bot-mark">🤖</span> Agent
                   <span class="chip-small">connected · public</span>
                 </div>
 
-                <div class="bubble user">
+                <div class="bubble user fade-anim" id="hc-user">
                   Add a new customer: Acme Pro — email acme.pro@example.com
                 </div>
 
-                <div class="bubble agent">
+                <div class="typing fade-anim" id="hc-typing" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                </div>
+
+                <div class="bubble agent fade-anim" id="hc-agent">
                   <p>
                     I'll insert this record into <code>public.customers</code>.
                     Because it's a write, I need your approval before running it.
                   </p>
-                  <div class="approval-card">
+                  <div class="approval-card" id="hc-approval">
                     <div class="ac-head">
                       <span class="ac-kind">INSERT</span>
                       <span class="ac-target">public.customers</span>
-                      <span class="ac-rows">1 row affected</span>
+                      <span class="ac-status" id="hc-approval-status"></span>
                     </div>
                     <pre class="ac-sql"><span class="kw">INSERT INTO</span> public.customers (name, email)
 <span class="kw">VALUES</span> (<span class="str">'Acme Pro'</span>, <span class="str">'acme.pro@example.com'</span>);</pre>
                     <div class="ac-actions">
-                      <button class="ac-btn reject" type="button">Reject</button>
-                      <button class="ac-btn approve" type="button">Approve &amp; run</button>
+                      <button class="ac-btn reject" type="button" id="hc-reject">Reject</button>
+                      <button class="ac-btn approve" type="button" id="hc-approve">Approve &amp; run</button>
                     </div>
                   </div>
                 </div>
 
-                <div class="typing" aria-hidden="true">
+                <div class="typing fade-anim" id="hc-typing2" aria-hidden="true">
                   <span></span><span></span><span></span>
                 </div>
+
+                <div class="bubble agent fade-anim" id="hc-result"></div>
               </div>
             </div>
           </div>
