@@ -56,7 +56,7 @@ export const pt: Dict = {
     renameSession: "Renomear sessão",
     untitled: "Sem título",
     empty: "Inicie uma conversa — peça ao agente para explorar, consultar ou alterar seu banco.",
-    greeting: "Olá! Como posso te ajudar com seu banco hoje?",
+    greeting: "Olá! Posso te ajudar a explorar seus bancos de dados, é só pedir.",
     placeholder: "Pergunte ao agente…",
     send: "Enviar",
     export: "Exportar sessão em Markdown",

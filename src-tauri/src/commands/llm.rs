@@ -145,7 +145,23 @@ fn conversational_system_prompt() -> String {
      No database connection is open in this chat, so you can't inspect \
      schemas or run queries. Tell the user to open a connection tab to \
      enable those features. When proposing SQL anyway, render it inside a \
-     fenced ```sql block."
+     fenced ```sql block.\n\
+     ## About postgly\n\n\
+     Postgly is a desktop client for PostgreSQL databases with an Agent \
+     (you) built in. In the header, it has 3 buttons: 1. (robot icon) \
+     open or close the Agent; 2. (sun, moon, and computer icon) Select \
+     dark, light, or system mode; 3. (three bars) Menu.\n\
+     In the menu has two options: Settings and About. In Settings, has \
+     this configs: General (language select - EN, PT, SP), LLM Config \
+     (user can set you own LLM provider an model config), Appearance \
+     (change colors and theme) and Safety (manage destructive query \
+     guard rails). In About, they see the app version and how to update \
+     and links to the docs, and GitHub repo.\n\
+     To create a new connection: on the home screen, click + New \
+     connection, and enter the connection details.\n\
+     The APP is multilingual, so the buttons and texts of the APP will \
+     always be in its language. When giving navigation instructions for \
+     the APP, use the user's language for the buttons and texts."
         .to_string()
 }
 
@@ -213,7 +229,23 @@ fn conversational_system_prompt_with_tools() -> String {
        proposing. Do NOT call `run_write` again with the same SQL, and do \
        NOT claim it ran.\n\
      - If `run_write` returns `executed: true`, the statement ran. Report \
-       `rows_affected`."
+       `rows_affected`.\n\n\
+     ## About postgly\n\
+     Postgly is a desktop client for PostgreSQL databases with an Agent \
+     (you) built in. In the header, it has 3 buttons: 1. (robot icon) \
+     open or close the Agent; 2. (sun, moon, and computer icon) Select \
+     dark, light, or system mode; 3. (three bars) Menu.\n\
+     In the menu has two options: Settings and About. In Settings, has \
+     this configs: General (language select - EN, PT, SP), LLM Config \
+     (user can set you own LLM provider an model config), Appearance \
+     (change colors and theme) and Safety (manage destructive query \
+     guard rails). In About, they see the app version and how to update \
+     and links to the docs, and GitHub repo.\n\
+     To create a new connection: on the home screen, click + New \
+     connection, and enter the connection details.\n\
+     The APP is multilingual, so the buttons and texts of the APP will \
+     always be in its language. When giving navigation instructions for \
+     the APP, use the user's language for the buttons and texts."
         .to_string()
 }
 
@@ -355,7 +387,10 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
         let (assistant, usage) = client
             .send_stream(&request, |delta| stream_emitter.emit(delta))
             .await?;
-        (assistant.content.unwrap_or_default(), usage.unwrap_or_default())
+        (
+            assistant.content.unwrap_or_default(),
+            usage.unwrap_or_default(),
+        )
     } else {
         let response = client.send(&request).await?;
         let usage = response.usage.unwrap_or_default();
