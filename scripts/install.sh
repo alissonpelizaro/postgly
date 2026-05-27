@@ -118,10 +118,54 @@ elif [ "$PLATFORM" = "linux" ]; then
   mv "$TMP/$ASSET" "$DEST"
   chmod +x "$DEST"
 
+  # Desktop integration: extract icon + create .desktop so Postgly
+  # shows up in Ubuntu/GNOME launcher, KDE menu, etc.
+  ICON_DIR="$HOME/.local/share/icons/hicolor/512x512/apps"
+  APPS_DIR="$HOME/.local/share/applications"
+  DESKTOP_FILE="$APPS_DIR/postgly.desktop"
+  ICON_DEST="$ICON_DIR/postgly.png"
+
+  mkdir -p "$ICON_DIR" "$APPS_DIR"
+
+  c_dim "Extracting icon from AppImage..."
+  EXTRACT_DIR="$TMP/extract"
+  mkdir -p "$EXTRACT_DIR"
+  (cd "$EXTRACT_DIR" && "$DEST" --appimage-extract '*.png' >/dev/null 2>&1) || true
+
+  ICON_SRC="$(find "$EXTRACT_DIR/squashfs-root" -maxdepth 3 -type f -name '*.png' \
+    2>/dev/null | head -n1)"
+
+  if [ -n "$ICON_SRC" ] && [ -f "$ICON_SRC" ]; then
+    cp "$ICON_SRC" "$ICON_DEST"
+  else
+    c_dim "Icon not found in AppImage — launcher entry will use generic icon."
+    ICON_DEST="postgly"
+  fi
+
+  c_dim "Creating desktop entry at $DESKTOP_FILE..."
+  cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Postgly
+Comment=Postgly
+Exec=$DEST %U
+Icon=$ICON_DEST
+Terminal=false
+Categories=Development;Utility;
+StartupWMClass=postgly
+EOF
+  chmod +x "$DESKTOP_FILE"
+
+  command -v update-desktop-database >/dev/null 2>&1 \
+    && update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
+  command -v gtk-update-icon-cache >/dev/null 2>&1 \
+    && gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
+
   c_green "✓ Postgly installed at $DEST"
+  c_green "✓ Launcher entry created — search 'Postgly' in your app menu"
   echo
   case ":$PATH:" in
-    *":$BIN_DIR:"*) echo "Launch with: postgly" ;;
+    *":$BIN_DIR:"*) echo "Launch from terminal: postgly" ;;
     *) echo "Add $BIN_DIR to your PATH, then launch with: postgly"
        echo "  e.g. echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc" ;;
   esac
