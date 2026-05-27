@@ -1,10 +1,8 @@
 import { useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Check,
   Copy,
-  Download,
   ExternalLink,
   Github,
   Heart,
@@ -161,8 +159,6 @@ export function AboutDialog({ open, onOpenChange, version }: AboutDialogProps) {
 function VersionBlock({ version }: { version: VersionInfo }) {
   const updateCmd = useMemo(() => updateCommandFor(detectPlatform()), []);
   const [copied, setCopied] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const onCopy = async () => {
     try {
@@ -175,27 +171,11 @@ function VersionBlock({ version }: { version: VersionInfo }) {
     }
   };
 
-  const onAutoUpdate = async () => {
-    const ok = window.confirm(
-      "O Postgly será fechado e o script de atualização será aberto em uma nova janela de terminal. Continuar?",
-    );
-    if (!ok) return;
-    setUpdating(true);
-    setUpdateError(null);
-    try {
-      await invoke("run_update_and_exit");
-      // App is exiting; nothing else to do.
-    } catch (err) {
-      setUpdating(false);
-      setUpdateError(String(err));
-    }
-  };
-
   if (version.updateAvailable && version.latest) {
     return (
       <div className="max-w-115 flex flex-col space-y-3 overflow-hidden rounded-md border border-primary/40 bg-primary/10 p-3 text-sm">
         <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
+          <div>
             <p className="font-medium text-foreground">
               Nova versão disponível: v{version.latest}
             </p>
@@ -203,31 +183,7 @@ function VersionBlock({ version }: { version: VersionInfo }) {
               Você está usando v{version.current}.
             </p>
           </div>
-          <Button
-            size="sm"
-            onClick={onAutoUpdate}
-            disabled={updating}
-            className="shrink-0"
-            title="Fechar o Postgly e executar o script de atualização"
-          >
-            {updating ? (
-              <>
-                <Loader2 className="size-3.5 animate-spin" />
-                Atualizando…
-              </>
-            ) : (
-              <>
-                <Download className="size-3.5" />
-                Atualizar agora
-              </>
-            )}
-          </Button>
         </div>
-        {updateError && (
-          <p className="text-xs text-destructive">
-            Falha ao iniciar atualização: {updateError}
-          </p>
-        )}
 
         <div className="min-w-0 space-y-2 overflow-hidden rounded-md border border-border bg-background/60 p-2.5">
           <div className="flex items-center justify-between gap-2">
