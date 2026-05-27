@@ -260,6 +260,7 @@ fn conversational_system_prompt_with_tools() -> String {
 /// final assembled reply is still returned via this command so the
 /// frontend gets `trace` and `usage` in one place.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn agent_chat_send<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     state: tauri::State<'_, AppState>,
