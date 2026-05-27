@@ -216,7 +216,7 @@ function VersionBlock({ version }: { version: VersionInfo }) {
           <pre className="max-w-full overflow-x-auto rounded border border-border bg-muted/50 px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-foreground">
             <code className="whitespace-pre">{updateCmd.command}</code>
           </pre>
-          <p className="text-[11px] mt-2 leading-relaxed text-muted-foreground">
+          <p className="text-[11px] mt-5 leading-relaxed text-muted-foreground">
             O script baixa o instalador, aplica a atualização e remove os
             arquivos temporários. Feche o Postgly antes de executar.
           </p>
