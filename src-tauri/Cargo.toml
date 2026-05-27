@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Postgly — a modern multi-database management app"
 authors = ["Alisson Pelizaro"]
 edition = "2021"
+license = "MIT"
 
 [lib]
 # The `_lib` suffix keeps the lib name unique so it doesn't conflict with the
