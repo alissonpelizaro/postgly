@@ -24,6 +24,9 @@ export interface AgentChatSendOptions {
   connectionSessionId?: string | null;
   model?: string;
   temperature?: number;
+  /** When set, the backend emits `agent_chat_delta` events keyed by this id
+   *  with `{ request_id, delta }` payloads as the model streams text. */
+  requestId?: string;
 }
 
 export interface ChatMutationResult {
@@ -45,6 +48,7 @@ export const agentChatApi = {
       connectionSessionId: options?.connectionSessionId ?? null,
       modelOverride: options?.model ?? null,
       temperatureOverride: options?.temperature ?? null,
+      requestId: options?.requestId ?? null,
     }),
 
   /** Execute a mutation the user approved via the inline confirmation card. */

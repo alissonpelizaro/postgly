@@ -229,6 +229,213 @@ impl<'a> ChatClient<'a> {
             .await
             .map_err(|e| AppError::Connection(format!("invalid chat completions response: {e}")))
     }
+
+    /// Streaming variant of [`Self::send`]. Reads the SSE response from
+    /// an OpenAI-compatible `chat/completions?stream=true` call, invokes
+    /// `on_content` for every text delta as it arrives, and returns the
+    /// fully assembled assistant message plus token usage when the
+    /// stream terminates.
+    ///
+    /// Tool-call deltas are merged but NOT pushed through `on_content`
+    /// (they're not user-visible text). Providers that don't honour
+    /// `stream_options.include_usage` just leave usage at `None`.
+    pub async fn send_stream<F>(
+        &self,
+        request: &ChatRequest,
+        mut on_content: F,
+    ) -> AppResult<(ChatMessage, Option<TokenUsage>)>
+    where
+        F: FnMut(&str),
+    {
+        let client = build_client_with_timeout(Duration::from_secs(180))?;
+        let url = endpoint(self.base_url, "chat/completions");
+
+        // Serialize and tack on stream + stream_options. We can't add
+        // those to ChatRequest itself because non-streaming callers
+        // would inherit them.
+        let mut body = serde_json::to_value(request)
+            .map_err(|e| AppError::Other(format!("serialize chat request: {e}")))?;
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("stream".into(), Value::Bool(true));
+            obj.insert(
+                "stream_options".into(),
+                serde_json::json!({ "include_usage": true }),
+            );
+        }
+
+        let response = client
+            .post(&url)
+            .bearer_auth(self.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AppError::Connection(format!("request failed: {e}")))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            let snippet = body.chars().take(300).collect::<String>();
+            return Err(AppError::Connection(format!(
+                "HTTP {}: {}",
+                status.as_u16(),
+                if snippet.is_empty() {
+                    "no body"
+                } else {
+                    &snippet
+                }
+            )));
+        }
+
+        let mut response = response;
+        let mut acc = StreamAccumulator::default();
+        let mut buffer = String::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|e| AppError::Connection(format!("stream read failed: {e}")))?
+        {
+            buffer.push_str(std::str::from_utf8(&chunk).unwrap_or(""));
+            // SSE events are separated by a blank line.
+            while let Some(idx) = buffer.find("\n\n") {
+                let event = buffer[..idx].to_string();
+                buffer.drain(..idx + 2);
+                for line in event.lines() {
+                    let Some(data) = line.strip_prefix("data:") else {
+                        continue;
+                    };
+                    let data = data.trim();
+                    if data.is_empty() || data == "[DONE]" {
+                        continue;
+                    }
+                    let Ok(chunk_json) = serde_json::from_str::<StreamChunk>(data) else {
+                        continue;
+                    };
+                    if let Some(usage) = chunk_json.usage {
+                        acc.usage = Some(usage);
+                    }
+                    for choice in chunk_json.choices {
+                        if let Some(content) = choice.delta.content {
+                            if !content.is_empty() {
+                                acc.content.push_str(&content);
+                                on_content(&content);
+                            }
+                        }
+                        for tc in choice.delta.tool_calls {
+                            acc.merge_tool_call(tc);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(acc.into_message_and_usage())
+    }
+}
+
+/// Single SSE chunk in an OpenAI-compatible streaming response. We keep
+/// everything optional because providers vary widely in what they emit.
+#[derive(Debug, Deserialize)]
+struct StreamChunk {
+    #[serde(default)]
+    choices: Vec<StreamChoice>,
+    #[serde(default)]
+    usage: Option<TokenUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamChoice {
+    delta: StreamDelta,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct StreamDelta {
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    tool_calls: Vec<ToolCallDelta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolCallDelta {
+    /// Position in the assistant's tool_calls array. Required to
+    /// reassemble multiple parallel calls.
+    index: usize,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default, rename = "type")]
+    kind: Option<String>,
+    #[serde(default)]
+    function: Option<FunctionDelta>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct FunctionDelta {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    arguments: Option<String>,
+}
+
+/// Buffer that assembles a complete assistant message from streamed
+/// deltas. Tool-call slots are extended in place since fragments for the
+/// same `index` can arrive across many SSE events.
+#[derive(Debug, Default)]
+struct StreamAccumulator {
+    content: String,
+    tool_calls: Vec<ToolCall>,
+    usage: Option<TokenUsage>,
+}
+
+impl StreamAccumulator {
+    fn merge_tool_call(&mut self, delta: ToolCallDelta) {
+        while self.tool_calls.len() <= delta.index {
+            self.tool_calls.push(ToolCall {
+                id: String::new(),
+                kind: "function".into(),
+                function: FunctionCall {
+                    name: String::new(),
+                    arguments: String::new(),
+                },
+            });
+        }
+        let slot = &mut self.tool_calls[delta.index];
+        if let Some(id) = delta.id {
+            if !id.is_empty() {
+                slot.id = id;
+            }
+        }
+        if let Some(kind) = delta.kind {
+            if !kind.is_empty() {
+                slot.kind = kind;
+            }
+        }
+        if let Some(func) = delta.function {
+            if let Some(name) = func.name {
+                if !name.is_empty() {
+                    slot.function.name.push_str(&name);
+                }
+            }
+            if let Some(args) = func.arguments {
+                slot.function.arguments.push_str(&args);
+            }
+        }
+    }
+
+    fn into_message_and_usage(self) -> (ChatMessage, Option<TokenUsage>) {
+        let content = if self.content.is_empty() {
+            None
+        } else {
+            Some(self.content)
+        };
+        let message = ChatMessage {
+            role: Role::Assistant,
+            content,
+            tool_calls: self.tool_calls,
+            tool_call_id: None,
+            name: None,
+        };
+        (message, self.usage)
+    }
 }
 
 #[cfg(test)]

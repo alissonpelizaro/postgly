@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 import { agentChatApi, type AgentChatTurn } from "./api";
 import { loadStore, saveStore } from "./storage";
@@ -237,6 +238,50 @@ export function useAgentChat(options: UseAgentChatOptions) {
     [],
   );
 
+  /** Apply a streamed text delta to the in-progress assistant message of
+   *  a session. Creates the placeholder message on the first delta and
+   *  appends to its content thereafter. The id of the placeholder is
+   *  tracked per-session so concurrent requests don't cross-contaminate. */
+  const streamingMsgIds = useRef<Map<string, string>>(new Map());
+  const appendStreamingDelta = useCallback(
+    (sessionId: string, delta: string) => {
+      if (delta.length === 0) return;
+      const existingId = streamingMsgIds.current.get(sessionId);
+      if (!existingId) {
+        const placeholder = buildMessage("assistant", delta);
+        streamingMsgIds.current.set(sessionId, placeholder.id);
+        setStore((prev) => {
+          const s = prev.sessions[sessionId];
+          if (!s) return prev;
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [sessionId]: {
+                ...s,
+                messages: [...s.messages, placeholder],
+                updatedAt: placeholder.createdAt,
+              },
+            },
+          };
+        });
+        return;
+      }
+      setStore((prev) => {
+        const s = prev.sessions[sessionId];
+        if (!s) return prev;
+        const messages = s.messages.map((m) =>
+          m.id === existingId ? { ...m, content: m.content + delta } : m,
+        );
+        return {
+          ...prev,
+          sessions: { ...prev.sessions, [sessionId]: { ...s, messages } },
+        };
+      });
+    },
+    [],
+  );
+
   /** Run the agent with an explicit history snapshot (no implicit reads
    *  from state) and append the reply on success. Centralises the
    *  pending/error wiring so every entry point shares the same flow. */
@@ -251,11 +296,46 @@ export function useAgentChat(options: UseAgentChatOptions) {
       const history: AgentChatTurn[] = historyMessages
         .filter((m) => m.role === "user" || m.role === "assistant")
         .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      const requestId = newId();
+      // Subscribe BEFORE invoking so we don't miss the opening chunks of
+      // fast streams. listen() resolves to an unlisten fn.
+      const unlistenPromise = listen<{ request_id: string; delta: string }>(
+        "agent_chat_delta",
+        (event) => {
+          if (event.payload.request_id !== requestId) return;
+          appendStreamingDelta(sessionId, event.payload.delta);
+        },
+      );
       try {
         const reply = await agentChatApi.send(history, instruction, {
           connectionSessionId: dbSessionId,
+          requestId,
         });
-        appendMessage(sessionId, "assistant", reply.content, reply.trace);
+        // Replace the streaming placeholder (if any) with the canonical
+        // reply — same content but with the final trace + proposal
+        // attached. If no placeholder exists (no deltas arrived) fall
+        // back to a plain append.
+        const placeholderId = streamingMsgIds.current.get(sessionId);
+        if (placeholderId) {
+          streamingMsgIds.current.delete(sessionId);
+          const finalMsg = buildMessage("assistant", reply.content, reply.trace);
+          setStore((prev) => {
+            const s = prev.sessions[sessionId];
+            if (!s) return prev;
+            const messages = s.messages.map((m) =>
+              m.id === placeholderId ? { ...finalMsg, id: m.id } : m,
+            );
+            return {
+              ...prev,
+              sessions: {
+                ...prev.sessions,
+                [sessionId]: { ...s, messages, updatedAt: Date.now() },
+              },
+            };
+          });
+        } else {
+          appendMessage(sessionId, "assistant", reply.content, reply.trace);
+        }
         // Fire-and-forget: ask the LLM for a real title once the first
         // assistant reply has landed. Build the history inline (state
         // hasn't flushed yet) and let `autoGenerateTitle` gate via
@@ -272,14 +352,41 @@ export function useAgentChat(options: UseAgentChatOptions) {
         ];
         void autoGenerateTitle(sessionId, titleHistory);
       } catch (err) {
+        // Streaming may have left a partial assistant bubble — drop it
+        // so the user sees the error against a clean trailing user turn,
+        // which is what `retryLast` expects.
+        const placeholderId = streamingMsgIds.current.get(sessionId);
+        if (placeholderId) {
+          streamingMsgIds.current.delete(sessionId);
+          setStore((prev) => {
+            const s = prev.sessions[sessionId];
+            if (!s) return prev;
+            return {
+              ...prev,
+              sessions: {
+                ...prev.sessions,
+                [sessionId]: {
+                  ...s,
+                  messages: s.messages.filter((m) => m.id !== placeholderId),
+                },
+              },
+            };
+          });
+        }
         setError(String(err));
       } finally {
+        try {
+          const unlisten = await unlistenPromise;
+          unlisten();
+        } catch {
+          // If the listener never registered (unlikely), nothing to do.
+        }
         setPendingSessionId((current) =>
           current === sessionId ? null : current,
         );
       }
     },
-    [appendMessage, dbSessionId, autoGenerateTitle],
+    [appendMessage, appendStreamingDelta, dbSessionId, autoGenerateTitle],
   );
 
   const sendMessage = useCallback(

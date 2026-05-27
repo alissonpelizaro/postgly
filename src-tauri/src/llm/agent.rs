@@ -305,6 +305,94 @@ pub async fn run_chat(
     })
 }
 
+/// Streaming variant of [`run_chat`]. Identical tool-use loop, but each
+/// model turn goes through [`ChatClient::send_stream`] so the caller
+/// receives text deltas in real time via `on_content`. Tool-call turns
+/// don't emit content, so `on_content` simply isn't invoked for them.
+pub async fn run_chat_stream<F>(
+    client: &ChatClient<'_>,
+    tool_defs: Vec<ToolDef>,
+    executor: &dyn ToolExecutor,
+    model: &str,
+    temperature: f32,
+    messages: Vec<ChatMessage>,
+    mut on_content: F,
+) -> AppResult<ChatOutput>
+where
+    F: FnMut(&str),
+{
+    let mut messages = messages;
+    let mut trace = Vec::new();
+    let mut usage = TokenUsage::default();
+
+    for _ in 0..MAX_STEPS {
+        let request = ChatRequest {
+            model: model.to_string(),
+            messages: messages.clone(),
+            temperature: Some(temperature),
+            tools: tool_defs.clone(),
+        };
+        let (assistant, turn_usage) = client
+            .send_stream(&request, |delta| on_content(delta))
+            .await?;
+        if let Some(u) = turn_usage.as_ref() {
+            usage.accumulate(u);
+        }
+        messages.push(assistant.clone());
+
+        if !assistant.tool_calls.is_empty() {
+            for call in &assistant.tool_calls {
+                let args: Value = if call.function.arguments.trim().is_empty() {
+                    Value::Object(serde_json::Map::new())
+                } else {
+                    serde_json::from_str(&call.function.arguments)
+                        .unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
+                };
+                trace.push(TraceEvent::ToolCall {
+                    name: call.function.name.clone(),
+                    arguments: args.clone(),
+                });
+
+                let (ok, body) = match executor.execute(&call.function.name, args).await {
+                    Ok(v) => (true, v),
+                    Err(e) => (false, serde_json::json!({ "error": e.to_string() })),
+                };
+                trace.push(TraceEvent::ToolResult {
+                    name: call.function.name.clone(),
+                    ok,
+                    result: body.clone(),
+                });
+
+                messages.push(ChatMessage::tool(
+                    call.id.clone(),
+                    call.function.name.clone(),
+                    serde_json::to_string(&body).unwrap_or_else(|_| "{}".into()),
+                ));
+            }
+            continue;
+        }
+
+        let content = assistant.content.unwrap_or_default();
+        trace.push(TraceEvent::AssistantMessage {
+            content: content.clone(),
+        });
+        return Ok(ChatOutput {
+            content,
+            trace,
+            usage,
+        });
+    }
+
+    Ok(ChatOutput {
+        content: format!(
+            "Stopped after {MAX_STEPS} reasoning steps without a final answer. \
+             Try narrowing your request."
+        ),
+        trace,
+        usage,
+    })
+}
+
 /// Coerce the assistant's final message into an [`AgentOutput`]. JSON is
 /// parsed leniently — the model occasionally wraps it in a code fence
 /// or trails extra commentary, so we try a few recoveries before giving

@@ -129,6 +129,7 @@ fn conversational_system_prompt() -> String {
      falar\", \"hope this helps\" or equivalents in any language). End \
      when the answer ends.\n\n\
      ## Scope — strict\n\
+     You can always reply user's greetings kindly. \
      Your ONLY job is (1) helping the user manage their database \
      (PostgreSQL: schemas, tables, queries, SQL syntax, performance, data \
      modeling, migrations) and (2) helping them navigate Postgly itself \
@@ -218,6 +219,11 @@ fn conversational_system_prompt_with_tools() -> String {
 /// each turn (kept in localStorage with a 180-day TTL). When
 /// `connection_session_id` is set, the LLM is given read-only tools to
 /// inspect and query that database session.
+///
+/// When `request_id` is set, the backend streams every text delta as a
+/// `agent_chat_delta` Tauri event carrying `{ request_id, delta }`; the
+/// final assembled reply is still returned via this command so the
+/// frontend gets `trace` and `usage` in one place.
 #[tauri::command]
 pub async fn agent_chat_send<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
@@ -227,6 +233,7 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
     connection_session_id: Option<String>,
     model_override: Option<String>,
     temperature_override: Option<f32>,
+    request_id: Option<String>,
 ) -> AppResult<AgentChatResponse> {
     if instruction.trim().is_empty() {
         return Err(AppError::Other("instruction is empty".into()));
@@ -286,6 +293,11 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
     messages.push(ChatMessage::user(instruction));
 
     let client = ChatClient::new(&cfg.base_url, &api_key);
+    let request_id = request_id
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let streaming = request_id.is_some();
+    let stream_emitter = StreamEmitter::new(app.clone(), request_id);
 
     if let Some(session_id) = bound {
         let session = session_for(&state, session_id)?;
@@ -295,15 +307,28 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
         let executor = SessionTools::new(session, Arc::clone(&schema))
             .with_confirm_writes(safety.confirm_destructive);
 
-        let output = agent::run_chat(
-            &client,
-            tool_defs,
-            &executor,
-            effective_model,
-            effective_temperature,
-            messages,
-        )
-        .await?;
+        let output = if streaming {
+            agent::run_chat_stream(
+                &client,
+                tool_defs,
+                &executor,
+                effective_model,
+                effective_temperature,
+                messages,
+                |delta| stream_emitter.emit(delta),
+            )
+            .await?
+        } else {
+            agent::run_chat(
+                &client,
+                tool_defs,
+                &executor,
+                effective_model,
+                effective_temperature,
+                messages,
+            )
+            .await?
+        };
 
         if output.content.trim().is_empty() {
             return Err(AppError::Other(
@@ -323,14 +348,21 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
         temperature: Some(effective_temperature),
         tools: Vec::new(),
     };
-    let response = client.send(&request).await?;
-    let usage = response.usage.unwrap_or_default();
-    let choice = response
-        .choices
-        .into_iter()
-        .next()
-        .ok_or_else(|| AppError::Other("LLM returned no choices".into()))?;
-    let content = choice.message.content.unwrap_or_default();
+    let (content, usage) = if streaming {
+        let (assistant, usage) = client
+            .send_stream(&request, |delta| stream_emitter.emit(delta))
+            .await?;
+        (assistant.content.unwrap_or_default(), usage.unwrap_or_default())
+    } else {
+        let response = client.send(&request).await?;
+        let usage = response.usage.unwrap_or_default();
+        let choice = response
+            .choices
+            .into_iter()
+            .next()
+            .ok_or_else(|| AppError::Other("LLM returned no choices".into()))?;
+        (choice.message.content.unwrap_or_default(), usage)
+    };
     if content.trim().is_empty() {
         return Err(AppError::Other(
             "LLM returned an empty response. Try rephrasing your message.".into(),
@@ -341,6 +373,33 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
         usage,
         trace: Vec::new(),
     })
+}
+
+/// Helper that turns content deltas into Tauri `agent_chat_delta` events
+/// keyed by `request_id`. Emits nothing when no request id was supplied
+/// (callers that don't want streaming just pass `None`).
+struct StreamEmitter<R: tauri::Runtime> {
+    app: tauri::AppHandle<R>,
+    request_id: Option<String>,
+}
+
+impl<R: tauri::Runtime> StreamEmitter<R> {
+    fn new(app: tauri::AppHandle<R>, request_id: Option<String>) -> Self {
+        Self { app, request_id }
+    }
+
+    fn emit(&self, delta: &str) {
+        let Some(id) = self.request_id.as_deref() else {
+            return;
+        };
+        // Best-effort: drop failures silently so a busted emit channel
+        // doesn't kill the streaming chat.
+        let _ = tauri::Emitter::emit(
+            &self.app,
+            "agent_chat_delta",
+            serde_json::json!({ "request_id": id, "delta": delta }),
+        );
+    }
 }
 
 /// Result of approving and executing a pending mutation from the chat
@@ -1050,6 +1109,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap_err();
@@ -1095,6 +1155,7 @@ mod tests {
             None,
             Some("  ".into()),
             Some(5.0),
+            None,
         )
         .await
         .unwrap();
@@ -1142,6 +1203,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap_err();
@@ -1152,6 +1214,7 @@ mod tests {
             app.state::<AppState>(),
             vec![],
             "q2".into(),
+            None,
             None,
             None,
             None,
@@ -1209,6 +1272,7 @@ mod tests {
             Some("s".into()),
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1237,6 +1301,7 @@ mod tests {
             Some("ghost".into()),
             None,
             None,
+            None,
         )
         .await
         .unwrap_err();
@@ -1259,6 +1324,7 @@ mod tests {
             vec![],
             "x".into(),
             Some("s".into()),
+            None,
             None,
             None,
         )

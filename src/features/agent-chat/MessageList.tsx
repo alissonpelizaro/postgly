@@ -79,7 +79,9 @@ export function MessageList({
           }
         />
       ))}
-      {pending && <TypingBubble />}
+      {pending && messages[messages.length - 1]?.role !== "assistant" && (
+        <TypingBubble />
+      )}
       <div ref={endRef} />
     </div>
   );
