@@ -148,37 +148,53 @@
               <span class="tl-dot red"></span>
               <span class="tl-dot yel"></span>
               <span class="tl-dot grn"></span>
-              <span class="tl-title">Postgly — production · public.orders</span>
+              <span class="tl-title">Postgly — production · agent · public.customers</span>
             </div>
             <div class="mock-body">
               <div class="mock-sidebar">
                 <div class="mock-tree-head">SCHEMAS</div>
                 <div class="mock-tree-item open">▾ public</div>
-                <div class="mock-tree-item sub active">▸ orders</div>
-                <div class="mock-tree-item sub">▸ users</div>
+                <div class="mock-tree-item sub active">▸ customers</div>
+                <div class="mock-tree-item sub">▸ orders</div>
                 <div class="mock-tree-item sub">▸ products</div>
                 <div class="mock-tree-item sub">▸ payments</div>
                 <div class="mock-tree-item">▸ analytics</div>
               </div>
-              <div class="mock-main">
-                <div class="mock-nlbar">
-                  <span class="spark">✨</span>
-                  <span class="nl-text">quarterly sales per customer, in descending order</span>
-                  <span class="mock-btn">Generate</span>
+              <div class="mock-main mock-chat font-small" id="hero-chat" data-state="intro">
+                <div class="mock-chat-head">
+                  <span class="bot-mark">🤖</span> Agent
+                  <span class="chip-small">connected · public</span>
                 </div>
-                <pre class="mock-code"><span class="kw">SELECT</span> u.name, <span class="fn">SUM</span>(o.total) <span class="kw">AS</span> total
-<span class="kw">FROM</span> orders o
-<span class="kw">JOIN</span> users u <span class="kw">ON</span> u.id = o.user_id
-<span class="kw">WHERE</span> o.created_at &gt;= <span class="fn">date_trunc</span>(<span class="str">'quarter'</span>, <span class="fn">now</span>())
-<span class="kw">GROUP BY</span> u.name
-<span class="kw">ORDER BY</span> total <span class="kw">DESC</span>;</pre>
-                <div class="mock-grid">
-                  <div class="mg-row mg-head"><span>name</span><span>total</span></div>
-                  <div class="mg-row"><span>Acme Co.</span><span>184,920.00</span></div>
-                  <div class="mg-row"><span>Globex</span><span>121,300.50</span></div>
-                  <div class="mg-row"><span>Initech</span><span>98,440.75</span></div>
-                  <div class="mg-row"><span>Umbrella</span><span>72,015.20</span></div>
+
+                <div class="bubble user fade-anim" id="hc-user">
+                  Add a new customer: Acme Pro — email acme.pro@example.com
                 </div>
+
+                <div class="typing fade-anim" id="hc-typing" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                </div>
+
+                <div class="bubble agent fade-anim" id="hc-agent">
+                  <p id="hc-intro"></p>
+                  <div class="approval-card" id="hc-approval">
+                    <div class="ac-head">
+                      <span class="ac-kind" id="hc-kind"></span>
+                      <span class="ac-target" id="hc-target"></span>
+                      <span class="ac-status" id="hc-approval-status"></span>
+                    </div>
+                    <pre class="ac-sql" id="hc-sql"></pre>
+                    <div class="ac-actions">
+                      <button class="ac-btn reject" type="button" id="hc-reject">Reject</button>
+                      <button class="ac-btn approve" type="button" id="hc-approve">Approve &amp; run</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="typing fade-anim" id="hc-typing2" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                </div>
+
+                <div class="bubble agent fade-anim" id="hc-result"></div>
               </div>
             </div>
           </div>

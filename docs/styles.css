@@ -1,3 +1,33 @@
+/* ───────── scrollbars ─────────
+ * Thin, transparent, modern. Firefox uses the standard
+ * scrollbar-width/color pair; WebKit/Blink (Safari, Chrome, Edge,
+ * Tauri's webview) gets the ::-webkit-scrollbar overrides. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--fg-soft) 55%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg-soft) 45%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--fg-soft) 75%, transparent);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* ───────── tokens ───────── */
 :root {
   --bg: #ffffff;
@@ -291,6 +321,181 @@ html[data-theme="light"] .dl pre {
 .mg-row:last-child { border-bottom: 0; }
 .mg-head { background: var(--bg-alt); color: var(--fg-soft); font-weight: 600; }
 
+/* Hero mock — agent conversation variant. Mirrors the in-app chat
+ * panel: user bubble right-aligned, agent bubble with an embedded
+ * approval card that waits on the human for a destructive write. */
+.mock-chat { gap: 6px; padding: 12px 14px 10px; }
+.mock-chat-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--fg-soft);
+  padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+.bot-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  font-size: 12px;
+}
+.chip-small {
+  margin-left: auto;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--bg-alt); border: 1px solid var(--border);
+  font-size: 11px; color: var(--fg-soft);
+}
+.bubble {
+  max-width: 86%;
+  padding: 10px 10px; border-radius: 15px;
+  font-size: 12px; line-height: 1.45;
+}
+.bubble p { margin: 0; }
+.bubble code {
+  background: color-mix(in srgb, #fff 8%, transparent);
+  border-radius: 4px; padding: 0 4px;
+  font-family: var(--font-mono); font-size: 11px;
+}
+.bubble.user {
+  align-self: flex-end;
+  background: var(--accent-grad); color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.bubble.user code { background: rgba(255,255,255,0.18); color: #fff; }
+.bubble.agent {
+  align-self: flex-start;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-bottom-left-radius: 4px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.approval-card {
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  overflow: hidden;
+}
+.ac-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px;
+  font-size: 11.5px; color: var(--fg-soft);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.ac-kind {
+  padding: 1px 7px; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--fg); font-weight: 600; font-size: 10.5px;
+  letter-spacing: .04em;
+}
+.ac-target { font-family: var(--font-mono); color: var(--fg); }
+.ac-rows { margin-left: auto; }
+.ac-sql {
+  margin: 0; padding: 18px 10px;
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
+  color: #d6def0; background: var(--bg-code);
+  overflow-x: auto; white-space: pre;
+}
+.ac-actions {
+  display: flex; justify-content: flex-end; gap: 6px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+.ac-btn {
+  padding: 3px 9px; border-radius: 6px;
+  font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--bg-elev); color: var(--fg);
+  cursor: pointer;
+}
+.ac-btn.approve {
+  background: var(--accent-grad); color: #fff; border-color: transparent;
+}
+
+/* DELETE approval has a destructive red tint while pending so the
+ * stakes are obvious; flips to green once the visitor approves so
+ * the "done" state still reads as success. UPDATE keeps the neutral
+ * brand tint (same as INSERT). */
+.approval-card[data-kind="delete"] {
+  border-color: color-mix(in srgb, #ff5f56 55%, transparent);
+  background: color-mix(in srgb, #ff5f56 9%, transparent);
+}
+.approval-card[data-kind="delete"] .ac-head {
+  border-bottom-color: color-mix(in srgb, #ff5f56 30%, transparent);
+}
+.approval-card[data-kind="delete"] .ac-kind {
+  background: color-mix(in srgb, #ff5f56 30%, transparent);
+}
+.approval-card[data-kind="delete"][data-state="approved"] {
+  border-color: color-mix(in srgb, #27c93f 60%, transparent);
+  background: color-mix(in srgb, #27c93f 10%, transparent);
+}
+.approval-card[data-kind="delete"][data-state="approved"] .ac-head {
+  border-bottom-color: color-mix(in srgb, #27c93f 35%, transparent);
+}
+.approval-card[data-kind="delete"][data-state="approved"] .ac-kind {
+  background: color-mix(in srgb, #27c93f 30%, transparent);
+}
+/* Generic fade-in helper for the hero chat: elements start hidden +
+ * lifted, then the `.in` class transitions them into place. Elements
+ * without `.in` are also collapsed out of the layout so the typing
+ * indicator and result bubble don't reserve empty rows in the chat
+ * flex column. */
+.fade-anim {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .35s ease, transform .35s ease;
+  pointer-events: none;
+}
+.fade-anim:not(.in):not(.pre-in) {
+  display: none !important;
+}
+/* `.pre-in` is set by the show() helper for one frame so the element
+ * is in the layout (and at its initial opacity/transform state) before
+ * `.in` is added — gives the transition a starting frame to animate
+ * from instead of jumping straight to the final state. */
+.fade-anim.pre-in {
+  display: revert;
+}
+.fade-anim.in {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* Approval card outcome states — locks the buttons + tints the card
+ * border so the chosen action is visible. */
+.approval-card[data-state="approved"] { border-color: color-mix(in srgb, #27c93f 55%, transparent); }
+.approval-card[data-state="rejected"] { border-color: color-mix(in srgb, #ff5f56 55%, transparent); }
+.approval-card[data-state="approved"] .ac-btn,
+.approval-card[data-state="rejected"] .ac-btn {
+  opacity: .55; cursor: default; pointer-events: none;
+}
+.ac-status {
+  margin-left: auto;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.approval-card[data-state="approved"] .ac-status { color: #27c93f; }
+.approval-card[data-state="rejected"] .ac-status { color: #ff5f56; }
+
+.typing {
+  display: inline-flex; gap: 4px; padding: 6px 10px;
+  align-self: flex-start; border-radius: 12px;
+  background: var(--bg-alt); border: 1px solid var(--border);
+}
+.typing span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+  animation: typing-dot 1.2s ease-in-out infinite;
+}
+.typing span:nth-child(2) { animation-delay: .15s; }
+.typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes typing-dot {
+  0%, 60%, 100% { opacity: .25; transform: translateY(0); }
+  30%           { opacity: 1;    transform: translateY(-3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing span { animation: none; }
+}
+
 /* ───────── strip ───────── */
 .strip { padding: 28px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--bg-alt); }
 .strip-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--fg-soft); font-size: 14px; }
@@ -538,6 +743,8 @@ html[data-theme="light"] .dl pre {
   .mock-window { transform: none; }
   .mock-nlbar { font-size: 12px; padding: 8px 10px; flex-wrap: wrap; }
   .nl-text { flex: 1 1 100%; }
+  .bubble { font-size: 12.5px; }
+  .ac-sql { font-size: 11px; padding: 8px 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
