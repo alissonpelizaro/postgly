@@ -11,6 +11,7 @@
  * ------------------------------------------------------------------------- */
 :root {
   --radius: 0.875rem;
+  color-scheme: light;
 
   --background: oklch(1 0 0);
   --foreground: oklch(0.18 0.015 270);
@@ -56,6 +57,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.155 0.012 270);
   --foreground: oklch(0.93 0.008 270);
 
@@ -260,6 +262,14 @@ html.dark[data-color="yellow"] {
     overflow: hidden;
     -webkit-user-select: none;
     user-select: none;
+  }
+
+  /* Native <select>/<option> on Linux WebKitGTK ignore inherited theme — force
+   * explicit bg/color so dark mode doesn't render white-on-white. */
+  select,
+  option {
+    background-color: var(--background);
+    color: var(--foreground);
   }
 }
 
@@ -508,6 +518,16 @@ html.dark[data-color="yellow"] {
   }
   .range-slider:focus-visible {
     outline: none;
+  }
+
+  /* Typing indicator dots — staggered opacity/scale pulse. */
+  @keyframes typing-dot {
+    0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+    30%           { opacity: 1;    transform: translateY(-3px); }
+  }
+  .animate-typing-dot {
+    animation: typing-dot 1.2s ease-in-out infinite;
+    will-change: opacity, transform;
   }
 
   /* Soft grid backdrop, faded with a radial mask (mirrors the site hero). */

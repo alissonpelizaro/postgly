@@ -189,7 +189,7 @@ function MessageBubble({
       <div className={cn("flex max-w-[85%] min-w-0 flex-col gap-1.5", isUser && "items-end")}>
         <div
           className={cn(
-            "rounded-lg px-3 py-2 text-sm",
+            "rounded-lg px-3 py-2 text-sm select-text [-webkit-user-select:text]",
             isUser
               ? "bg-primary text-primary-foreground"
               : "bg-card text-foreground border border-border",
@@ -339,7 +339,7 @@ function GreetingBubble({ text }: { text: string }) {
         <Bot className="size-3.5" />
       </div>
       <div className="flex max-w-[85%] min-w-0 flex-col gap-1.5">
-        <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground">
+        <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground select-text [-webkit-user-select:text]">
           {text}
         </div>
       </div>
@@ -365,7 +365,7 @@ function TypingBubble() {
 function Dot({ delay }: { delay: number }) {
   return (
     <span
-      className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/60"
+      className="animate-typing-dot inline-block size-1.5 rounded-full bg-muted-foreground"
       style={{ animationDelay: `${delay}ms` }}
     />
   );
