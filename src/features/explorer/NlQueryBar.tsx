@@ -686,7 +686,9 @@ function OverridePopover({
   const defaultTemperature = view?.llm.temperature ?? 0;
   const effectiveModel = override.model ?? defaultModel;
   const effectiveTemperature = override.temperature ?? defaultTemperature;
-  const list = models.kind === "ok" ? models.list : [];
+  const list = (models.kind === "ok" ? models.list : [])
+    .slice()
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   const modelInList = effectiveModel !== "" && list.includes(effectiveModel);
 
   const setModel = (value: string | undefined) => {

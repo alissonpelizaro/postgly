@@ -410,7 +410,9 @@ interface ModelFieldProps {
 function ModelField({ status, value, onChange }: ModelFieldProps) {
   const [customMode, setCustomMode] = useState(false);
 
-  const list = status.kind === "ok" ? status.list : [];
+  const list = (status.kind === "ok" ? status.list : [])
+    .slice()
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   const valueInList = value !== "" && list.includes(value);
   // When the saved value isn't in the fetched list, show it as a separate
   // option (and surface a hint) so the user understands why.

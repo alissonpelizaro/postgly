@@ -122,12 +122,46 @@ pub struct AgentChatResponse {
 /// session attached. The model can still answer general questions and
 /// propose SQL, but it cannot inspect or execute against any database.
 fn conversational_system_prompt() -> String {
-    "You are a friendly, concise PostgreSQL assistant embedded in a database \
-     client. Answer the user's questions in natural language. Keep responses \
-     short and helpful. The user has not opened a database connection in \
-     this chat — explain that you can't inspect schemas or run queries, and \
-     suggest they open a connection tab to enable those features. When \
-     proposing SQL anyway, render it inside a fenced ```sql code block."
+    "You are the in-app assistant for Postgly, a desktop database client. \
+     Reply in the user's language. Be concise — no greetings, no filler, \
+     no trailing offers of further help (don't write things like \"posso \
+     te ajudar em algo mais?\", \"se precisar de mais alguma coisa é só \
+     falar\", \"hope this helps\" or equivalents in any language). End \
+     when the answer ends.\n\n\
+     ## Scope — strict\n\
+     For greetinsgs, always reply with a concise welcome message that \
+     invites the user to ask a question or provide instructions.\n\
+     Your ONLY job is (1) helping the user manage their database \
+     (PostgreSQL: schemas, tables, queries, SQL syntax, performance, data \
+     modeling, migrations) and (2) helping them navigate Postgly itself \
+     (Connections, Explorer, Settings, About, tabs, keyboard shortcuts, \
+     features of the app). Anything outside that scope — general coding \
+     help, other tools/frameworks, math, writing, life advice, opinions, \
+     translations, jokes, world knowledge — is OFF LIMITS even if the \
+     user insists. For those, reply briefly and politely in the user's \
+     language, stating that your specialty is helping with the database \
+     and with using Postgly, and stop there. Do NOT attempt the task.\n\n\
+     ## State\n\
+     No database connection is open in this chat, so you can't inspect \
+     schemas or run queries. Tell the user to open a connection tab to \
+     enable those features. When proposing SQL anyway, render it inside a \
+     fenced ```sql block.\n\
+     ## About postgly\n\n\
+     Postgly is a desktop client for PostgreSQL databases with an Agent \
+     (you) built in. In the header, it has 3 buttons: 1. (robot icon) \
+     open or close the Agent; 2. (sun, moon, and computer icon) Select \
+     dark, light, or system mode; 3. (three bars) Menu.\n\
+     In the menu has two options: Settings and About. In Settings, has \
+     this configs: General (language select - EN, PT, SP), LLM Config \
+     (user can set you own LLM provider an model config), Appearance \
+     (change colors and theme) and Safety (manage destructive query \
+     guard rails). In About, they see the app version and how to update \
+     and links to the docs, and GitHub repo.\n\
+     To create a new connection: on the home screen, click + New \
+     connection, and enter the connection details.\n\
+     The APP is multilingual, so the buttons and texts of the APP will \
+     always be in its language. When giving navigation instructions for \
+     the APP, use the user's language for the buttons and texts."
         .to_string()
 }
 
@@ -135,26 +169,83 @@ fn conversational_system_prompt() -> String {
 /// The model has read-only tools for schema lookup, SELECT execution
 /// and gated write/DDL execution.
 fn conversational_system_prompt_with_tools() -> String {
-    "You are a friendly, concise PostgreSQL assistant embedded in a database \
-     client. You have a live connection to the user's database and a set of \
-     tools to explore and modify it.\n\n\
-     Rules:\n\
-     - Always look things up before answering. Use `list_tables`, \
-       `describe_table` and `list_relations` to confirm tables, columns and joins.\n\
-     - When the user asks for data, use `run_select` to run the query and \
-       report what you actually saw. Quote real values, not made-up ones.\n\
-     - `run_select` returns at most 100 rows. If `truncated` is true, mention \
-       it and suggest a narrower filter.\n\
-     - When the user asks to change the database, use `run_write`. Pass a \
-       single statement plus a short `summary` of what it does and why.\n\
-     - If `run_write` returns `needs_approval: true`, the host is showing the \
-       user an approval card. STOP and explain in plain language what you're \
-       proposing — do NOT call `run_write` again with the same SQL, and do \
-       not pretend it ran. The user will approve or reject.\n\
+    "You are the in-app assistant for Postgly, a desktop PostgreSQL \
+     client. You have a live connection to the user's database and a set \
+     of tools to explore and modify it. Reply in the user's language.\n\n\
+     ## Scope — strict\n\
+     For greetinsgs, always reply with a concise welcome message that \
+     invites the user to ask a question or provide instructions.\n\
+     Your ONLY job is (1) helping the user manage their database \
+     (schemas, tables, queries, SQL syntax, performance, data modeling, \
+     migrations) and (2) helping them navigate Postgly itself \
+     (Connections, Explorer, Settings, About, tabs, keyboard shortcuts, \
+     features of the app). Anything outside that scope — general coding \
+     help in other languages or frameworks, math, writing, life advice, \
+     opinions, translations, jokes, world knowledge — is OFF LIMITS even \
+     if the user insists. For those, reply briefly and politely in the \
+     user's language, stating that your specialty is helping with the \
+     database and with using Postgly, and stop there. Do NOT attempt the \
+     task and do NOT call any tools.\n\n\
+     ## Style\n\
+     - Be concise and matter-of-fact. No greetings, no filler, no recap of \
+       what you just did unless the user asks.\n\
+     - NEVER end a response with offers of further help such as \"posso te \
+       ajudar em algo mais?\", \"se precisar de mais alguma coisa é só \
+       falar\", \"let me know if you need anything else\", \"hope this \
+       helps\", or any equivalent. Stop when the answer is complete.\n\
+     - Render SQL inside fenced ```sql blocks when the user benefits from \
+       seeing it. Otherwise just state the result.\n\n\
+     ## Autonomy — find things yourself before asking\n\
+     - Default to acting, not asking. If the user names a table without a \
+       schema, call `list_tables` with no schema filter and locate it \
+       yourself. Try common variants too: singular/plural, snake_case, \
+       and obvious synonyms (e.g. `users` ↔ `usuarios`, `customers` ↔ \
+       `clientes`).\n\
+     - When a table appears in exactly one schema, just use it — don't ask \
+       the user to confirm the schema.\n\
+     - When a table appears in MORE than one schema, do NOT guess. List the \
+       matching `schema.table` candidates back to the user and ask which \
+       one they mean. Wait for the answer before running any query.\n\
+     - When the requested table does not exist at all, do a fuzzy scan via \
+       `list_tables` and propose the 2–4 closest names you found. Don't \
+       invent names.\n\
+     - Use `describe_table` and `list_relations` whenever joins, types, or \
+       FK paths matter. Don't ask the user for column names that you can \
+       look up.\n\
+     - Only ask the user when the ambiguity is genuinely irreducible \
+       (multiple plausible schemas, conflicting filters, unclear intent). \
+       Keep the question to one short sentence with concrete options.\n\n\
+     ## Reading data\n\
+     - For data questions, run `run_select` and report what you actually \
+       saw. Quote real values, never fabricated ones.\n\
+     - `run_select` returns at most 100 rows. If `truncated` is true, say \
+       so and suggest a narrower filter.\n\
+     - Prefer schema-qualified names in generated SQL (`schema.table`).\n\n\
+     ## Writing data\n\
+     - For mutations, use `run_write` with a single statement and a short \
+       `summary` of what it does and why.\n\
+     - If `run_write` returns `needs_approval: true`, the host is showing \
+       an approval card. STOP. Explain in plain language what you're \
+       proposing. Do NOT call `run_write` again with the same SQL, and do \
+       NOT claim it ran.\n\
      - If `run_write` returns `executed: true`, the statement ran. Report \
-       `rows_affected` to the user.\n\
-     - Answer in natural language. Keep responses short. Render SQL inside \
-       fenced ```sql blocks when you want the user to see it."
+       `rows_affected`.\n\n\
+     ## About postgly\n\
+     Postgly is a desktop client for PostgreSQL databases with an Agent \
+     (you) built in. In the header, it has 3 buttons: 1. (robot icon) \
+     open or close the Agent; 2. (sun, moon, and computer icon) Select \
+     dark, light, or system mode; 3. (three bars) Menu.\n\
+     In the menu has two options: Settings and About. In Settings, has \
+     this configs: General (language select - EN, PT, SP), LLM Config \
+     (user can set you own LLM provider an model config), Appearance \
+     (change colors and theme) and Safety (manage destructive query \
+     guard rails). In About, they see the app version and how to update \
+     and links to the docs, and GitHub repo.\n\
+     To create a new connection: on the home screen, click + New \
+     connection, and enter the connection details.\n\
+     The APP is multilingual, so the buttons and texts of the APP will \
+     always be in its language. When giving navigation instructions for \
+     the APP, use the user's language for the buttons and texts."
         .to_string()
 }
 
@@ -163,7 +254,13 @@ fn conversational_system_prompt_with_tools() -> String {
 /// each turn (kept in localStorage with a 180-day TTL). When
 /// `connection_session_id` is set, the LLM is given read-only tools to
 /// inspect and query that database session.
+///
+/// When `request_id` is set, the backend streams every text delta as a
+/// `agent_chat_delta` Tauri event carrying `{ request_id, delta }`; the
+/// final assembled reply is still returned via this command so the
+/// frontend gets `trace` and `usage` in one place.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn agent_chat_send<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     state: tauri::State<'_, AppState>,
@@ -172,6 +269,7 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
     connection_session_id: Option<String>,
     model_override: Option<String>,
     temperature_override: Option<f32>,
+    request_id: Option<String>,
 ) -> AppResult<AgentChatResponse> {
     if instruction.trim().is_empty() {
         return Err(AppError::Other("instruction is empty".into()));
@@ -231,6 +329,11 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
     messages.push(ChatMessage::user(instruction));
 
     let client = ChatClient::new(&cfg.base_url, &api_key);
+    let request_id = request_id
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let streaming = request_id.is_some();
+    let stream_emitter = StreamEmitter::new(app.clone(), request_id);
 
     if let Some(session_id) = bound {
         let session = session_for(&state, session_id)?;
@@ -240,15 +343,28 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
         let executor = SessionTools::new(session, Arc::clone(&schema))
             .with_confirm_writes(safety.confirm_destructive);
 
-        let output = agent::run_chat(
-            &client,
-            tool_defs,
-            &executor,
-            effective_model,
-            effective_temperature,
-            messages,
-        )
-        .await?;
+        let output = if streaming {
+            agent::run_chat_stream(
+                &client,
+                tool_defs,
+                &executor,
+                effective_model,
+                effective_temperature,
+                messages,
+                |delta| stream_emitter.emit(delta),
+            )
+            .await?
+        } else {
+            agent::run_chat(
+                &client,
+                tool_defs,
+                &executor,
+                effective_model,
+                effective_temperature,
+                messages,
+            )
+            .await?
+        };
 
         if output.content.trim().is_empty() {
             return Err(AppError::Other(
@@ -268,14 +384,24 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
         temperature: Some(effective_temperature),
         tools: Vec::new(),
     };
-    let response = client.send(&request).await?;
-    let usage = response.usage.unwrap_or_default();
-    let choice = response
-        .choices
-        .into_iter()
-        .next()
-        .ok_or_else(|| AppError::Other("LLM returned no choices".into()))?;
-    let content = choice.message.content.unwrap_or_default();
+    let (content, usage) = if streaming {
+        let (assistant, usage) = client
+            .send_stream(&request, |delta| stream_emitter.emit(delta))
+            .await?;
+        (
+            assistant.content.unwrap_or_default(),
+            usage.unwrap_or_default(),
+        )
+    } else {
+        let response = client.send(&request).await?;
+        let usage = response.usage.unwrap_or_default();
+        let choice = response
+            .choices
+            .into_iter()
+            .next()
+            .ok_or_else(|| AppError::Other("LLM returned no choices".into()))?;
+        (choice.message.content.unwrap_or_default(), usage)
+    };
     if content.trim().is_empty() {
         return Err(AppError::Other(
             "LLM returned an empty response. Try rephrasing your message.".into(),
@@ -286,6 +412,33 @@ pub async fn agent_chat_send<R: tauri::Runtime>(
         usage,
         trace: Vec::new(),
     })
+}
+
+/// Helper that turns content deltas into Tauri `agent_chat_delta` events
+/// keyed by `request_id`. Emits nothing when no request id was supplied
+/// (callers that don't want streaming just pass `None`).
+struct StreamEmitter<R: tauri::Runtime> {
+    app: tauri::AppHandle<R>,
+    request_id: Option<String>,
+}
+
+impl<R: tauri::Runtime> StreamEmitter<R> {
+    fn new(app: tauri::AppHandle<R>, request_id: Option<String>) -> Self {
+        Self { app, request_id }
+    }
+
+    fn emit(&self, delta: &str) {
+        let Some(id) = self.request_id.as_deref() else {
+            return;
+        };
+        // Best-effort: drop failures silently so a busted emit channel
+        // doesn't kill the streaming chat.
+        let _ = tauri::Emitter::emit(
+            &self.app,
+            "agent_chat_delta",
+            serde_json::json!({ "request_id": id, "delta": delta }),
+        );
+    }
 }
 
 /// Result of approving and executing a pending mutation from the chat
@@ -995,6 +1148,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap_err();
@@ -1040,6 +1194,7 @@ mod tests {
             None,
             Some("  ".into()),
             Some(5.0),
+            None,
         )
         .await
         .unwrap();
@@ -1087,6 +1242,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap_err();
@@ -1097,6 +1253,7 @@ mod tests {
             app.state::<AppState>(),
             vec![],
             "q2".into(),
+            None,
             None,
             None,
             None,
@@ -1154,6 +1311,7 @@ mod tests {
             Some("s".into()),
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1182,6 +1340,7 @@ mod tests {
             Some("ghost".into()),
             None,
             None,
+            None,
         )
         .await
         .unwrap_err();
@@ -1204,6 +1363,7 @@ mod tests {
             vec![],
             "x".into(),
             Some("s".into()),
+            None,
             None,
             None,
         )

@@ -63,10 +63,31 @@ function App() {
     refreshLlmConfigured();
   }, [refreshLlmConfigured]);
 
+  // Open the chat panel and hand the user a clean session — unless the
+  // active session is still empty (they opened, didn't type, closed and
+  // re-opened), in which case we reuse it instead of piling up empties.
+  const openChat = useCallback(() => {
+    const active = chat.activeSession;
+    if (!active || active.messages.length > 0) {
+      chat.createSession();
+    }
+    setChatOpen(true);
+  }, [chat]);
+
+  // Close the chat panel and prune the active session if it never
+  // received a message — keeps the history list free of empty entries.
+  const closeChat = useCallback(() => {
+    const active = chat.activeSession;
+    if (active && active.messages.length === 0) {
+      chat.deleteSession(active.id);
+    }
+    setChatOpen(false);
+  }, [chat]);
+
   // Close the chat panel automatically if the provider becomes unconfigured.
   useEffect(() => {
-    if (!llmConfigured) setChatOpen(false);
-  }, [llmConfigured]);
+    if (!llmConfigured) closeChat();
+  }, [llmConfigured, closeChat]);
 
   const openTab = (connection: ConnectionMeta) => {
     const id = crypto.randomUUID();
@@ -122,7 +143,7 @@ function App() {
         }}
         llmConfigured={llmConfigured}
         chatOpen={chatOpen}
-        onToggleChat={() => setChatOpen((v) => !v)}
+        onToggleChat={chatOpen ? closeChat : openChat}
       />
 
       <div className="min-h-0 flex-1">
@@ -152,7 +173,7 @@ function App() {
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
-              <AgentChatPanel chat={chat} onClose={() => setChatOpen(false)} />
+              <AgentChatPanel chat={chat} onClose={closeChat} />
             </ResizablePanel>
           </ResizablePanelGroup>
         ) : (

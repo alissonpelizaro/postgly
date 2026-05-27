@@ -305,6 +305,94 @@ pub async fn run_chat(
     })
 }
 
+/// Streaming variant of [`run_chat`]. Identical tool-use loop, but each
+/// model turn goes through [`ChatClient::send_stream`] so the caller
+/// receives text deltas in real time via `on_content`. Tool-call turns
+/// don't emit content, so `on_content` simply isn't invoked for them.
+pub async fn run_chat_stream<F>(
+    client: &ChatClient<'_>,
+    tool_defs: Vec<ToolDef>,
+    executor: &dyn ToolExecutor,
+    model: &str,
+    temperature: f32,
+    messages: Vec<ChatMessage>,
+    mut on_content: F,
+) -> AppResult<ChatOutput>
+where
+    F: FnMut(&str),
+{
+    let mut messages = messages;
+    let mut trace = Vec::new();
+    let mut usage = TokenUsage::default();
+
+    for _ in 0..MAX_STEPS {
+        let request = ChatRequest {
+            model: model.to_string(),
+            messages: messages.clone(),
+            temperature: Some(temperature),
+            tools: tool_defs.clone(),
+        };
+        let (assistant, turn_usage) = client
+            .send_stream(&request, |delta| on_content(delta))
+            .await?;
+        if let Some(u) = turn_usage.as_ref() {
+            usage.accumulate(u);
+        }
+        messages.push(assistant.clone());
+
+        if !assistant.tool_calls.is_empty() {
+            for call in &assistant.tool_calls {
+                let args: Value = if call.function.arguments.trim().is_empty() {
+                    Value::Object(serde_json::Map::new())
+                } else {
+                    serde_json::from_str(&call.function.arguments)
+                        .unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
+                };
+                trace.push(TraceEvent::ToolCall {
+                    name: call.function.name.clone(),
+                    arguments: args.clone(),
+                });
+
+                let (ok, body) = match executor.execute(&call.function.name, args).await {
+                    Ok(v) => (true, v),
+                    Err(e) => (false, serde_json::json!({ "error": e.to_string() })),
+                };
+                trace.push(TraceEvent::ToolResult {
+                    name: call.function.name.clone(),
+                    ok,
+                    result: body.clone(),
+                });
+
+                messages.push(ChatMessage::tool(
+                    call.id.clone(),
+                    call.function.name.clone(),
+                    serde_json::to_string(&body).unwrap_or_else(|_| "{}".into()),
+                ));
+            }
+            continue;
+        }
+
+        let content = assistant.content.unwrap_or_default();
+        trace.push(TraceEvent::AssistantMessage {
+            content: content.clone(),
+        });
+        return Ok(ChatOutput {
+            content,
+            trace,
+            usage,
+        });
+    }
+
+    Ok(ChatOutput {
+        content: format!(
+            "Stopped after {MAX_STEPS} reasoning steps without a final answer. \
+             Try narrowing your request."
+        ),
+        trace,
+        usage,
+    })
+}
+
 /// Coerce the assistant's final message into an [`AgentOutput`]. JSON is
 /// parsed leniently — the model occasionally wraps it in a code fence
 /// or trails extra commentary, so we try a few recoveries before giving
@@ -715,5 +803,81 @@ mod tests {
         .await
         .unwrap_err();
         assert!(err.to_string().contains("no choices"));
+    }
+
+    /// `run_chat_stream` should drive the same tool-call loop as
+    /// `run_chat` while forwarding text deltas from the final streamed
+    /// turn to the caller. Wiremock returns SSE for both turns:
+    /// turn 1 = tool_calls only (no content -> no callbacks);
+    /// turn 2 = streamed text fragments (callback fires per fragment).
+    #[tokio::test]
+    async fn run_chat_stream_streams_final_turn_after_tool_loop() {
+        let server = MockServer::start().await;
+
+        // Turn 1: tool_call delta, no content.
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(
+                        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"list_tables\",\"arguments\":\"{}\"}}]}}]}\n\n\
+                         data: [DONE]\n\n",
+                    ),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        // Turn 2: streamed text reply, three fragments.
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"hello \"}}]}\n\n\
+                         data: {\"choices\":[{\"delta\":{\"content\":\"world\"}}]}\n\n\
+                         data: {\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":6,\"total_tokens\":10}}\n\n\
+                         data: [DONE]\n\n",
+                    ),
+            )
+            .mount(&server)
+            .await;
+
+        let executor = ScriptedExecutor::new(vec![Ok(json!({"tables": ["users"]}))]);
+        let url = format!("{}/v1", server.uri());
+        let client = ChatClient::new(&url, "sk");
+        let mut deltas: Vec<String> = Vec::new();
+        let out = run_chat_stream(
+            &client,
+            vec![ToolDef::function(
+                "list_tables",
+                "",
+                json!({"type": "object"}),
+            )],
+            &executor,
+            "m",
+            0.0,
+            vec![ChatMessage::system("s"), ChatMessage::user("oi")],
+            |d| deltas.push(d.to_string()),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(out.content, "hello world");
+        assert_eq!(deltas, vec!["hello ", "world"]);
+        // Trace should hold the tool call + tool result + final
+        // assistant_message echo.
+        assert!(out
+            .trace
+            .iter()
+            .any(|e| matches!(e, TraceEvent::ToolCall { name, .. } if name == "list_tables")));
+        assert!(out
+            .trace
+            .iter()
+            .any(|e| matches!(e, TraceEvent::ToolResult { ok: true, .. })));
+        // Usage from the streamed turn.
+        assert_eq!(out.usage.total_tokens, 10);
     }
 }

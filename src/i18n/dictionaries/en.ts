@@ -54,7 +54,7 @@ export const en = {
     renameSession: "Rename session",
     untitled: "Untitled",
     empty: "Start a conversation — ask the agent to explore, query or change your database.",
-    greeting: "Hi! How can I help you with your database today?",
+    greeting: "Hi! I'm able to inspect your database and run queries. Just ask me anything!",
     placeholder: "Ask the agent…",
     send: "Send",
     export: "Export session as Markdown",

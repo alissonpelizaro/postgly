@@ -11,6 +11,11 @@
  * ------------------------------------------------------------------------- */
 :root {
   --radius: 0.875rem;
+  color-scheme: light;
+  /* Lets `transition: height` animate between intrinsic sizes like
+   * `auto`. Used by the streaming chat bubble so its height grows
+   * smoothly as text arrives instead of snapping per chunk. */
+  interpolate-size: allow-keywords;
 
   --background: oklch(1 0 0);
   --foreground: oklch(0.18 0.015 270);
@@ -56,6 +61,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.155 0.012 270);
   --foreground: oklch(0.93 0.008 270);
 
@@ -260,6 +266,14 @@ html.dark[data-color="yellow"] {
     overflow: hidden;
     -webkit-user-select: none;
     user-select: none;
+  }
+
+  /* Native <select>/<option> on Linux WebKitGTK ignore inherited theme — force
+   * explicit bg/color so dark mode doesn't render white-on-white. */
+  select,
+  option {
+    background-color: var(--background);
+    color: var(--foreground);
   }
 }
 
@@ -508,6 +522,103 @@ html.dark[data-color="yellow"] {
   }
   .range-slider:focus-visible {
     outline: none;
+  }
+
+  /* highlight.js token theme — token colours driven by CSS vars so the
+   * theme tracks light/dark mode without importing two stylesheets. */
+  :root {
+    --hl-comment:  oklch(0.55 0.02 270);
+    --hl-keyword:  oklch(0.48 0.22 286);
+    --hl-string:   oklch(0.5  0.15 150);
+    --hl-number:   oklch(0.55 0.18 25);
+    --hl-builtin:  oklch(0.5  0.18 211);
+    --hl-type:     oklch(0.55 0.16 60);
+    --hl-title:    oklch(0.45 0.16 286);
+    --hl-attr:     oklch(0.55 0.14 211);
+    --hl-tag:      oklch(0.5  0.18 350);
+    --hl-meta:     oklch(0.55 0.05 270);
+  }
+  .dark {
+    --hl-comment:  oklch(0.6  0.02 270);
+    --hl-keyword:  oklch(0.78 0.18 286);
+    --hl-string:   oklch(0.78 0.15 150);
+    --hl-number:   oklch(0.78 0.18 25);
+    --hl-builtin:  oklch(0.78 0.15 211);
+    --hl-type:     oklch(0.82 0.15 60);
+    --hl-title:    oklch(0.82 0.14 286);
+    --hl-attr:     oklch(0.8  0.13 211);
+    --hl-tag:      oklch(0.78 0.18 350);
+    --hl-meta:     oklch(0.7  0.04 270);
+  }
+  .hljs                              { color: var(--foreground); background: transparent; }
+  .hljs-comment,
+  .hljs-quote                        { color: var(--hl-comment); font-style: italic; }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-section,
+  .hljs-doctag                       { color: var(--hl-keyword); font-weight: 600; }
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-addition                     { color: var(--hl-string); }
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-bullet                       { color: var(--hl-number); }
+  .hljs-built_in,
+  .hljs-builtin-name                 { color: var(--hl-builtin); }
+  .hljs-type,
+  .hljs-class .hljs-title,
+  .hljs-params                       { color: var(--hl-type); }
+  .hljs-title,
+  .hljs-name,
+  .hljs-selector-id,
+  .hljs-selector-class               { color: var(--hl-title); font-weight: 600; }
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-variable,
+  .hljs-template-variable            { color: var(--hl-attr); }
+  .hljs-tag                          { color: var(--hl-tag); }
+  .hljs-meta,
+  .hljs-meta-keyword                 { color: var(--hl-meta); }
+  .hljs-deletion                     { color: var(--destructive); }
+  .hljs-emphasis                     { font-style: italic; }
+  .hljs-strong                       { font-weight: 700; }
+
+  /* Pulsing glow on the agent-chat trigger when the LLM is configured
+   * and the panel is closed. Box-shadow + scale ride a 2s cycle so the
+   * icon catches the eye without becoming distracting. */
+  @keyframes agent-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent);
+    }
+  }
+  .animate-agent-pulse {
+    animation: agent-pulse 2s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-agent-pulse {
+      animation: none;
+    }
+  }
+
+  /* Streaming chat bubble — smooth height growth while text streams in.
+   * Relies on `interpolate-size: allow-keywords` on :root. */
+  .streaming-bubble {
+    transition: height 0.12s ease-out;
+    overflow: hidden;
+  }
+
+  /* Typing indicator dots — staggered opacity/scale pulse. */
+  @keyframes typing-dot {
+    0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+    30%           { opacity: 1;    transform: translateY(-3px); }
+  }
+  .animate-typing-dot {
+    animation: typing-dot 1.2s ease-in-out infinite;
+    will-change: opacity, transform;
   }
 
   /* Soft grid backdrop, faded with a radial mask (mirrors the site hero). */

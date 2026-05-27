@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowUpCircle, Brain, Database, Info, LayoutGrid, Menu, Settings as SettingsIcon, X } from "lucide-react";
+import { ArrowUpCircle, Bot, Database, Info, LayoutGrid, Menu, Settings as SettingsIcon, X } from "lucide-react";
 
 // import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -103,8 +103,9 @@ export function TopBar({
   );
 }
 
-/** Brain button that opens the right-side agent chat. Muted until the
- *  LLM provider is configured. */
+/** Robot button that opens the right-side agent chat. Muted until the
+ *  LLM provider is configured; pulses a soft primary glow when connected
+ *  and idle (panel closed) so the user notices it is available. */
 function AgentChatButton({
   enabled,
   active,
@@ -128,11 +129,11 @@ function AgentChatButton({
       className={cn(
         "ml-1 flex size-7 items-center justify-center rounded-md transition-colors",
         !enabled && "text-muted-foreground/50 cursor-not-allowed",
-        enabled && !active && "text-primary hover:bg-accent",
+        enabled && !active && "animate-agent-pulse text-primary hover:bg-accent",
         enabled && active && "bg-primary/15 text-primary",
       )}
     >
-      <Brain className="size-4" />
+      <Bot className="size-4" />
     </button>
   );
 }

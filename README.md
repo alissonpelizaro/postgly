@@ -8,7 +8,7 @@ _local-first client with a built-in AI agent_
 
 [![CI](https://github.com/alissonpelizaro/postgly/actions/workflows/ci.yml/badge.svg)](https://github.com/alissonpelizaro/postgly/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/alissonpelizaro/postgly?style=flat-square&color=blue)](https://github.com/alissonpelizaro/postgly/releases/latest)
-[![License](https://img.shields.io/badge/license-Private-lightgrey?style=flat-square)](#license)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
 
@@ -150,4 +150,4 @@ Builds and publishes installers for macOS, Windows and Linux to a draft GitHub R
 
 ## License
 
-Private — all rights reserved.
+[MIT](LICENSE) © Alisson Pelizaro
