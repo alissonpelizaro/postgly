@@ -44,6 +44,7 @@ pub fn run() {
             commands::llm::agent_chat_send,
             commands::llm::agent_execute_pending_mutation,
             commands::llm::agent_generate_title,
+            commands::updater::run_update_and_exit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
