@@ -122,7 +122,13 @@ function App() {
         }}
         llmConfigured={llmConfigured}
         chatOpen={chatOpen}
-        onToggleChat={() => setChatOpen((v) => !v)}
+        onToggleChat={() => {
+          // Opening the panel always starts a fresh session so the user
+          // gets a clean turn-zero context instead of resuming whatever
+          // was last visible. Previous sessions stay in the sidebar.
+          if (!chatOpen) chat.createSession();
+          setChatOpen((v) => !v);
+        }}
       />
 
       <div className="min-h-0 flex-1">

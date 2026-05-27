@@ -1,4 +1,4 @@
-import { AlertCircle, Brain, Database, Download, PowerOff, RotateCcw, X } from "lucide-react";
+import { AlertCircle, Bot, Database, Download, PowerOff, RotateCcw, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n";
@@ -25,7 +25,7 @@ export function AgentChatPanel({ chat, onClose }: AgentChatPanelProps) {
     <div className="flex h-full min-h-0 flex-col border-l border-border bg-background">
       <header className="flex h-9 shrink-0 items-center justify-between gap-1 border-b border-border bg-sidebar px-2">
         <div className="flex items-center gap-1.5 text-sm font-medium">
-          <Brain className="size-4 text-primary" />
+          <Bot className="size-4 text-primary" />
           <span>{t("agentChat.title")}</span>
         </div>
         <div className="flex items-center">

@@ -584,6 +584,26 @@ html.dark[data-color="yellow"] {
   .hljs-emphasis                     { font-style: italic; }
   .hljs-strong                       { font-weight: 700; }
 
+  /* Pulsing glow on the agent-chat trigger when the LLM is configured
+   * and the panel is closed. Box-shadow + scale ride a 2s cycle so the
+   * icon catches the eye without becoming distracting. */
+  @keyframes agent-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent);
+    }
+  }
+  .animate-agent-pulse {
+    animation: agent-pulse 2s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-agent-pulse {
+      animation: none;
+    }
+  }
+
   /* Streaming chat bubble — smooth height growth while text streams in.
    * Relies on `interpolate-size: allow-keywords` on :root. */
   .streaming-bubble {
