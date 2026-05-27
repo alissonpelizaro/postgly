@@ -44,8 +44,21 @@
     const result = $("hc-result");
 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const show = (el) => el && el.classList.add("in");
-    const hide = (el) => el && el.classList.remove("in");
+    // Two-step show: `.pre-in` puts the element back in the layout at
+    // its initial opacity/transform; one frame later `.in` triggers
+    // the actual transition. Without this the element jumps from
+    // display:none → fully visible with no animation.
+    const show = (el) => {
+      if (!el) return;
+      el.classList.add("pre-in");
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          el.classList.add("in");
+          el.classList.remove("pre-in");
+        }),
+      );
+    };
+    const hide = (el) => el && el.classList.remove("in", "pre-in");
     const sleep = (ms) => new Promise((r) => setTimeout(r, reducedMotion ? 0 : ms));
 
     let timers = [];
@@ -115,7 +128,7 @@
 
       if (choice === "approve") {
         approval.dataset.state = "approved";
-        status.textContent = "Approved";
+        status.textContent = "";
         show(typing2);
         await delay(900);
         hide(typing2);
@@ -123,7 +136,7 @@
         show(result);
       } else {
         approval.dataset.state = "rejected";
-        status.textContent = "Rejected";
+        status.textContent = "";
         result.textContent = "Got it — no changes were made.";
         show(result);
       }

@@ -409,12 +409,25 @@ html[data-theme="light"] .dl pre {
   background: var(--accent-grad); color: #fff; border-color: transparent;
 }
 /* Generic fade-in helper for the hero chat: elements start hidden +
- * lifted, then the `.in` class transitions them into place. */
+ * lifted, then the `.in` class transitions them into place. Elements
+ * without `.in` are also collapsed out of the layout so the typing
+ * indicator and result bubble don't reserve empty rows in the chat
+ * flex column. */
 .fade-anim {
   opacity: 0;
   transform: translateY(6px);
   transition: opacity .35s ease, transform .35s ease;
   pointer-events: none;
+}
+.fade-anim:not(.in):not(.pre-in) {
+  display: none !important;
+}
+/* `.pre-in` is set by the show() helper for one frame so the element
+ * is in the layout (and at its initial opacity/transform state) before
+ * `.in` is added — gives the transition a starting frame to animate
+ * from instead of jumping straight to the final state. */
+.fade-anim.pre-in {
+  display: revert;
 }
 .fade-anim.in {
   opacity: 1;
