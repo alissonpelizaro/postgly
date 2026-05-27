@@ -1,6 +1,26 @@
-import { AlertCircle, Bot, Database, Download, PowerOff, RotateCcw, X } from "lucide-react";
+import {
+  AlertCircle,
+  Bot,
+  Check,
+  ChevronDown,
+  Cpu,
+  Database,
+  Download,
+  Loader2,
+  PowerOff,
+  RotateCcw,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +48,8 @@ export function AgentChatPanel({ chat, onClose }: AgentChatPanelProps) {
           <Bot className="size-4 text-primary" />
           <span>{t("agentChat.title")}</span>
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
+          <ModelPicker chat={chat} />
           <Button
             type="button"
             size="icon"
@@ -171,6 +192,92 @@ function triggerDownload(filename: string, content: string) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+interface ModelPickerProps {
+  chat: UseAgentChat;
+}
+
+/** Compact model selector for the chat header. Shows the effective
+ *  model (override or global default) and lets the user switch among
+ *  the models the provider advertises. */
+function ModelPicker({ chat }: ModelPickerProps) {
+  const { t } = useI18n();
+  const effective = chat.modelOverride ?? chat.defaultModel;
+  const label = effective || t("agentChat.modelDefault");
+  // Build the option list: always include the default + override (so
+  // the active value is always selectable) plus whatever the provider
+  // returned, deduped, then sorted alphabetically (case-insensitive).
+  const options = Array.from(
+    new Set(
+      [chat.defaultModel, chat.modelOverride, ...chat.availableModels].filter(
+        (m): m is string => !!m && m.length > 0,
+      ),
+    ),
+  ).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        disabled={chat.pending}
+        title={t("agentChat.modelTooltip")}
+        className={cn(
+          "flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+        )}
+      >
+        {chat.modelsLoading ? (
+          <Loader2 className="size-3 animate-spin" />
+        ) : (
+          <Cpu className="size-3" />
+        )}
+        <span className="max-w-[100px] truncate">{label}</span>
+        <ChevronDown className="size-3 opacity-60" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="max-h-[320px] min-w-[200px] overflow-y-auto"
+      >
+        <DropdownMenuLabel>{t("agentChat.modelHeader")}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {chat.defaultModel && (
+          <DropdownMenuItem
+            onClick={() => chat.setModel(null)}
+            className={cn(
+              "flex items-center justify-between gap-2 text-xs",
+              chat.modelOverride === null && "font-medium",
+            )}
+          >
+            <span className="truncate">
+              {t("agentChat.modelDefaultOption", { name: chat.defaultModel })}
+            </span>
+            {chat.modelOverride === null && <Check className="size-3" />}
+          </DropdownMenuItem>
+        )}
+        {options
+          .filter((m) => m !== chat.defaultModel)
+          .map((m) => (
+            <DropdownMenuItem
+              key={m}
+              onClick={() => chat.setModel(m)}
+              className={cn(
+                "flex items-center justify-between gap-2 text-xs",
+                chat.modelOverride === m && "font-medium",
+              )}
+            >
+              <span className="truncate">{m}</span>
+              {chat.modelOverride === m && <Check className="size-3" />}
+            </DropdownMenuItem>
+          ))}
+        {options.filter((m) => m !== chat.defaultModel).length === 0 &&
+          !chat.modelsLoading && (
+            <div className="px-2 py-1.5 text-[11px] text-muted-foreground">
+              {t("agentChat.modelEmpty")}
+            </div>
+          )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 interface ConnectionBadgeProps {

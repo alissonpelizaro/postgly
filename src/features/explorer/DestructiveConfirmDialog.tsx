@@ -1,4 +1,9 @@
+import { useMemo } from "react";
 import { AlertTriangle, Loader2, ShieldAlert } from "lucide-react";
+import hljs from "highlight.js/lib/core";
+import sqlLang from "highlight.js/lib/languages/sql";
+
+hljs.registerLanguage("sql", sqlLang);
 
 import { Button } from "@/components/ui/button";
 import {
@@ -170,10 +175,30 @@ function StatementRow({
           </span>
         )}
       </div>
-      <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-xs leading-snug text-foreground">
-        {stmt.preview}
-      </pre>
+      <SqlPreview text={stmt.preview} />
     </li>
+  );
+}
+
+function SqlPreview({ text }: { text: string }) {
+  const html = useMemo(() => {
+    try {
+      return hljs.highlight(text, { language: "sql" }).value;
+    } catch {
+      return "";
+    }
+  }, [text]);
+  return (
+    <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-xs leading-snug text-foreground">
+      {html ? (
+        <code
+          className="hljs whitespace-pre-wrap bg-transparent p-0"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      ) : (
+        text
+      )}
+    </pre>
   );
 }
 

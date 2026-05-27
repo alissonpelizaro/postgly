@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 
+import { settingsApi } from "@/features/settings/api";
+
 import { agentChatApi, type AgentChatTurn } from "./api";
 import { loadStore, saveStore } from "./storage";
 import type {
@@ -71,12 +73,92 @@ export interface UseAgentChatOptions {
   connectionLabel: string | null;
 }
 
+const MODEL_OVERRIDE_KEY = "postgly-chat-model";
+
 /** Session + message state machine for the agent chat. */
 export function useAgentChat(options: UseAgentChatOptions) {
   const { dbSessionId, connectionLabel } = options;
   const [store, setStore] = useState<ChatStore>(() => loadStore());
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Chat-scoped model override. Null = follow the global setting saved
+  // in `llm.model`. Persisted across launches.
+  const [modelOverride, setModelOverrideState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(MODEL_OVERRIDE_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const [defaultModel, setDefaultModel] = useState<string>("");
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  // Track the latest in-flight model probe so a slow earlier response
+  // doesn't clobber a fresher one.
+  const modelsReqId = useRef(0);
+
+  // Load the default model + available list. The probe hits
+  // {base_url}/models so it only runs when the provider is set. Also
+  // re-runs whenever the global LLM config is saved (via the
+  // `postgly:llm-config-changed` window event) so the chat picker
+  // doesn't keep showing a stale default.
+  useEffect(() => {
+    let cancelled = false;
+    const refreshFromSettings = async () => {
+      try {
+        const view = await settingsApi.get();
+        if (cancelled) return;
+        setDefaultModel(view.llm.model ?? "");
+        if (!view.llm.base_url || !view.llm_api_key_configured) {
+          setAvailableModels([]);
+          return;
+        }
+        const id = ++modelsReqId.current;
+        setModelsLoading(true);
+        try {
+          const res = await settingsApi.testLlm({
+            provider: view.llm.provider,
+            base_url: view.llm.base_url,
+            model: view.llm.model,
+            temperature: view.llm.temperature,
+            api_key: "",
+          });
+          if (cancelled || id !== modelsReqId.current) return;
+          setAvailableModels(res.models);
+        } catch {
+          // Probe failed — leave the list empty. The UI falls back to
+          // showing only the default model.
+        } finally {
+          if (!cancelled) setModelsLoading(false);
+        }
+      } catch {
+        // Settings store unavailable; nothing to do.
+      }
+    };
+
+    void refreshFromSettings();
+    const onChanged = () => {
+      void refreshFromSettings();
+    };
+    window.addEventListener("postgly:llm-config-changed", onChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("postgly:llm-config-changed", onChanged);
+    };
+  }, []);
+
+  const setModel = useCallback((model: string | null) => {
+    try {
+      if (model && model.length > 0) {
+        localStorage.setItem(MODEL_OVERRIDE_KEY, model);
+      } else {
+        localStorage.removeItem(MODEL_OVERRIDE_KEY);
+      }
+    } catch {
+      // localStorage unavailable in some webview contexts — best effort.
+    }
+    setModelOverrideState(model && model.length > 0 ? model : null);
+  }, []);
   // The hook's mutators read fresh state via this ref so they don't
   // need `store` in their deps (which would force unnecessary
   // re-renders of every consumer).
@@ -238,18 +320,35 @@ export function useAgentChat(options: UseAgentChatOptions) {
     [],
   );
 
-  /** Apply a streamed text delta to the in-progress assistant message of
-   *  a session. Creates the placeholder message on the first delta and
-   *  appends to its content thereafter. The id of the placeholder is
-   *  tracked per-session so concurrent requests don't cross-contaminate. */
-  const streamingMsgIds = useRef<Map<string, string>>(new Map());
+  /** Apply a streamed text delta to the in-progress assistant message
+   *  of a session. One bubble per turn — reasoning paragraphs from the
+   *  model are separated by a Markdown horizontal rule (`---`) so the
+   *  user can still see each step distinctly without bubble spam. The
+   *  raw buffer is kept in a ref so we can re-derive the rendered text
+   *  cheaply on each chunk. */
+  const streamingBuffers = useRef<
+    Map<string, { id: string; raw: string }>
+  >(new Map());
+
+  /** Convert a streamed plain-text buffer into the bubble's rendered
+   *  Markdown by inserting `---` separators between paragraph breaks. */
+  const renderStreamed = (raw: string): string =>
+    raw.replace(/\n{2,}/g, "\n\n---\n\n");
+
   const appendStreamingDelta = useCallback(
     (sessionId: string, delta: string) => {
       if (delta.length === 0) return;
-      const existingId = streamingMsgIds.current.get(sessionId);
-      if (!existingId) {
-        const placeholder = buildMessage("assistant", delta);
-        streamingMsgIds.current.set(sessionId, placeholder.id);
+      let state = streamingBuffers.current.get(sessionId);
+      if (!state) {
+        const id = newId();
+        state = { id, raw: delta };
+        streamingBuffers.current.set(sessionId, state);
+        const placeholder: ChatMessage = {
+          id,
+          role: "assistant",
+          content: renderStreamed(delta),
+          createdAt: Date.now(),
+        };
         setStore((prev) => {
           const s = prev.sessions[sessionId];
           if (!s) return prev;
@@ -267,11 +366,14 @@ export function useAgentChat(options: UseAgentChatOptions) {
         });
         return;
       }
+      state.raw += delta;
+      const rendered = renderStreamed(state.raw);
+      const id = state.id;
       setStore((prev) => {
         const s = prev.sessions[sessionId];
         if (!s) return prev;
         const messages = s.messages.map((m) =>
-          m.id === existingId ? { ...m, content: m.content + delta } : m,
+          m.id === id ? { ...m, content: rendered } : m,
         );
         return {
           ...prev,
@@ -310,20 +412,47 @@ export function useAgentChat(options: UseAgentChatOptions) {
         const reply = await agentChatApi.send(history, instruction, {
           connectionSessionId: dbSessionId,
           requestId,
+          model: modelOverride ?? undefined,
         });
-        // Replace the streaming placeholder (if any) with the canonical
-        // reply — same content but with the final trace + proposal
-        // attached. If no placeholder exists (no deltas arrived) fall
-        // back to a plain append.
-        const placeholderId = streamingMsgIds.current.get(sessionId);
-        if (placeholderId) {
-          streamingMsgIds.current.delete(sessionId);
-          const finalMsg = buildMessage("assistant", reply.content, reply.trace);
+        // Finalize: keep the streamed reasoning text intact and only
+        // attach the trace + proposal to the same bubble. If no stream
+        // arrived (rare — backend usually emits deltas) fall back to a
+        // plain append with the canonical reply.content.
+        const state = streamingBuffers.current.get(sessionId);
+        streamingBuffers.current.delete(sessionId);
+        if (state) {
+          const id = state.id;
+          const traceMsg = buildMessage("assistant", "", reply.trace);
+          // If reply.content extends past what the stream delivered,
+          // splice the missing tail onto the buffer (and let renderStreamed
+          // add a separator between reasoning and final answer).
+          let raw = state.raw;
+          if (
+            reply.content.length > raw.length &&
+            reply.content.startsWith(raw)
+          ) {
+            raw = reply.content;
+          } else if (
+            reply.content.length > 0 &&
+            !raw.includes(reply.content.trim())
+          ) {
+            raw = `${raw.replace(/\s+$/, "")}\n\n${reply.content}`;
+          }
+          const rendered = renderStreamed(raw);
           setStore((prev) => {
             const s = prev.sessions[sessionId];
             if (!s) return prev;
             const messages = s.messages.map((m) =>
-              m.id === placeholderId ? { ...finalMsg, id: m.id } : m,
+              m.id === id
+                ? {
+                    ...m,
+                    content: rendered,
+                    ...(traceMsg.trace ? { trace: traceMsg.trace } : {}),
+                    ...(traceMsg.proposal
+                      ? { proposal: traceMsg.proposal }
+                      : {}),
+                  }
+                : m,
             );
             return {
               ...prev,
@@ -355,9 +484,10 @@ export function useAgentChat(options: UseAgentChatOptions) {
         // Streaming may have left a partial assistant bubble — drop it
         // so the user sees the error against a clean trailing user turn,
         // which is what `retryLast` expects.
-        const placeholderId = streamingMsgIds.current.get(sessionId);
-        if (placeholderId) {
-          streamingMsgIds.current.delete(sessionId);
+        const state = streamingBuffers.current.get(sessionId);
+        if (state) {
+          streamingBuffers.current.delete(sessionId);
+          const placeholderId = state.id;
           setStore((prev) => {
             const s = prev.sessions[sessionId];
             if (!s) return prev;
@@ -386,7 +516,13 @@ export function useAgentChat(options: UseAgentChatOptions) {
         );
       }
     },
-    [appendMessage, appendStreamingDelta, dbSessionId, autoGenerateTitle],
+    [
+      appendMessage,
+      appendStreamingDelta,
+      dbSessionId,
+      autoGenerateTitle,
+      modelOverride,
+    ],
   );
 
   const sendMessage = useCallback(
@@ -515,14 +651,40 @@ export function useAgentChat(options: UseAgentChatOptions) {
           rowsAffected: res.rows_affected,
           kind: res.kind,
         });
+        // The agent stops after each approval card — it can't tell that
+        // the user clicked "approve" until we ping it again. Re-invoke
+        // the model with a synthetic continuation so multi-step plans
+        // (e.g. "create schema X then create table Y") actually run all
+        // the way through instead of stalling after step 1.
+        const history = storeRef.current.sessions[sessionId]?.messages ?? [];
+        const kindNote = res.kind ? ` (${res.kind})` : "";
+        const continuation =
+          `The previous statement${kindNote} was approved and executed ` +
+          `successfully — ${res.rows_affected} row(s) affected. If the ` +
+          `task required further steps, run the next one now; otherwise ` +
+          `summarize the outcome for the user.`;
+        void requestReply(sessionId, continuation, history);
       } catch (err) {
+        const errMessage = String(err);
         setProposalOutcome(sessionId, messageId, {
           status: "error",
-          message: String(err),
+          message: errMessage,
         });
+        // Same problem on the error path: without a continuation ping
+        // the agent never sees the failure and the conversation stalls.
+        // Tell it what went wrong so it can adapt (e.g. switch to
+        // CREATE TABLE IF NOT EXISTS, drop the duplicate, etc.) or
+        // surface the error to the user.
+        const history = storeRef.current.sessions[sessionId]?.messages ?? [];
+        const continuation =
+          `The previous statement was approved but failed to execute. ` +
+          `Database error: ${errMessage}. Decide how to proceed — adjust ` +
+          `the plan, propose a corrected statement, or stop and explain ` +
+          `the failure to the user.`;
+        void requestReply(sessionId, continuation, history);
       }
     },
-    [dbSessionId, setProposalOutcome],
+    [dbSessionId, setProposalOutcome, requestReply],
   );
 
   const rejectProposal = useCallback(
@@ -554,6 +716,12 @@ export function useAgentChat(options: UseAgentChatOptions) {
     clearError,
     dbSessionId,
     connectionLabel,
+    // Model selector state.
+    modelOverride,
+    setModel,
+    defaultModel,
+    availableModels,
+    modelsLoading,
   };
 }
 

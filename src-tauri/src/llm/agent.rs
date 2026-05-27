@@ -325,6 +325,11 @@ where
     let mut trace = Vec::new();
     let mut usage = TokenUsage::default();
 
+    // True after we've streamed at least one non-empty reasoning chunk.
+    // Used to inject a paragraph break between consecutive reasoning
+    // turns so the UI can render each step as its own block instead of
+    // gluing them all into one wall of text.
+    let mut emitted_any_content = false;
     for _ in 0..MAX_STEPS {
         let request = ChatRequest {
             model: model.to_string(),
@@ -332,11 +337,24 @@ where
             temperature: Some(temperature),
             tools: tool_defs.clone(),
         };
+        if emitted_any_content {
+            // Separator between agent turns. Two newlines = Markdown
+            // paragraph break; the host adds an <hr> on top of that.
+            on_content("\n\n");
+        }
         let (assistant, turn_usage) = client
             .send_stream(&request, |delta| on_content(delta))
             .await?;
         if let Some(u) = turn_usage.as_ref() {
             usage.accumulate(u);
+        }
+        if assistant
+            .content
+            .as_ref()
+            .map(|c| !c.trim().is_empty())
+            .unwrap_or(false)
+        {
+            emitted_any_content = true;
         }
         messages.push(assistant.clone());
 

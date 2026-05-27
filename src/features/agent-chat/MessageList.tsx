@@ -87,9 +87,11 @@ export function MessageList({
           }
         />
       ))}
-      {pending && messages[messages.length - 1]?.role !== "assistant" && (
-        <TypingBubble />
-      )}
+      {/* While the agent is thinking / tool-running, keep an ellipsis
+          bubble pulsing under whatever reasoning paragraphs already
+          arrived. Once the final reply lands, `pending` flips false and
+          the dots disappear. */}
+      {pending && <TypingBubble />}
       <div ref={endRef} />
     </div>
   );

@@ -86,6 +86,16 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Marketing site — disable text selection site-wide for an app-like
+   * feel. Inputs/textareas opt back in below. */
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  -webkit-touch-callout: none;
+}
+input, textarea, [contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 img, svg { display: block; max-width: 100%; }
 a { color: inherit; text-decoration: none; transition: color .15s ease, opacity .15s ease; }
@@ -324,7 +334,11 @@ html[data-theme="light"] .dl pre {
 /* Hero mock — agent conversation variant. Mirrors the in-app chat
  * panel: user bubble right-aligned, agent bubble with an embedded
  * approval card that waits on the human for a destructive write. */
-.mock-chat { gap: 6px; padding: 12px 14px 10px; }
+.mock-chat {
+  gap: 6px;
+  padding: 12px 14px 10px;
+  min-height: 400px;
+}
 .mock-chat-head {
   display: flex; align-items: center; gap: 8px;
   font-size: 12px; color: var(--fg-soft);

@@ -64,7 +64,9 @@ function readStoredColor(): ColorTheme {
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(
-    () => (localStorage.getItem(STORAGE_KEY) as Theme | null) ?? "system",
+    // First launch defaults to dark; the user can switch to light or
+    // follow the system preference from Appearance settings.
+    () => (localStorage.getItem(STORAGE_KEY) as Theme | null) ?? "dark",
   );
   const [colorTheme, setColorThemeState] = useState<ColorTheme>(readStoredColor);
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(getSystemTheme);

@@ -31,6 +31,14 @@ export function Markdown({ content, inverted }: MarkdownProps) {
           a: ({ node: _node, ...props }) => (
             <a {...props} target="_blank" rel="noreferrer" />
           ),
+          // Wrap tables in a horizontally-scrollable container so wide
+          // schema dumps don't force columns to wrap into vertical
+          // ribbons inside the narrow chat bubble.
+          table: ({ node: _node, children, ...props }) => (
+            <div className="not-prose -mx-1 my-1 overflow-x-auto">
+              <table {...props}>{children}</table>
+            </div>
+          ),
           pre: ({ node: _node, children, ...props }) => (
             <CodeBlock inverted={inverted} {...props}>
               {children}

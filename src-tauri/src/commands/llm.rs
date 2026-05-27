@@ -225,9 +225,9 @@ fn conversational_system_prompt_with_tools() -> String {
      - For mutations, use `run_write` with a single statement and a short \
        `summary` of what it does and why.\n\
      - If `run_write` returns `needs_approval: true`, the host is showing \
-       an approval card. STOP. Explain in plain language what you're \
-       proposing. Do NOT call `run_write` again with the same SQL, and do \
-       NOT claim it ran.\n\
+       an approval card. STOP - Only one approval card can be active at a \
+       time. Explain in plain language what you're proposing. Do NOT call \
+       `run_write` again with the same SQL, and do NOT claim it ran.\n\
      - If `run_write` returns `executed: true`, the statement ran. Report \
        `rows_affected`.\n\n\
      ## About postgly\n\

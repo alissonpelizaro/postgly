@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ChevronRight,
   Eraser,
   Eye,
+  Filter,
+  FolderPlus,
   Loader2,
   Plus,
   RefreshCw,
@@ -17,6 +19,7 @@ import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 import { explorerApi } from "./api";
+import { CreateSchemaDialog } from "./CreateSchemaDialog";
 import { DestructiveConfirmDialog } from "./DestructiveConfirmDialog";
 import { TableEditorDialog } from "./TableEditorDialog";
 import type {
@@ -26,7 +29,7 @@ import type {
   TableRef,
 } from "./types";
 
-type MutationOp = "drop" | "truncate" | "delete";
+type MutationOp = "drop" | "truncate" | "delete" | "drop_schema";
 
 interface SchemaTreeProps {
   sessionId: string;
@@ -62,7 +65,7 @@ interface PendingOp {
   sql: string;
   op: MutationOp;
   schema: string;
-  table: string;
+  table: string | null;
   analysis: StatementAnalysis | null;
 }
 
@@ -78,6 +81,9 @@ export function SchemaTree({
   const [loadingSchemas, setLoadingSchemas] = useState(true);
   const [schemasError, setSchemasError] = useState<string | null>(null);
   const [showSystem, setShowSystem] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filter, setFilter] = useState("");
+  const filterInputRef = useRef<HTMLInputElement | null>(null);
 
   // Tables cache + expand / load state, keyed by schema. Lifted here so
   // refreshes and DROP can update one schema without remounting the rest.
@@ -93,6 +99,7 @@ export function SchemaTree({
   const [tableMenu, setTableMenu] = useState<TableMenu | null>(null);
   const [schemaMenu, setSchemaMenu] = useState<SchemaMenu | null>(null);
   const [createForSchema, setCreateForSchema] = useState<string | null>(null);
+  const [createSchemaOpen, setCreateSchemaOpen] = useState(false);
   const [pending, setPending] = useState<PendingOp | null>(null);
   const [running, setRunning] = useState(false);
 
@@ -174,9 +181,18 @@ export function SchemaTree({
     );
   };
 
-  const visibleSchemas = showSystem
-    ? schemas
-    : schemas.filter((s) => !isSystemSchema(s.name));
+  const visibleSchemas = useMemo(() => {
+    const base = showSystem
+      ? schemas
+      : schemas.filter((s) => !isSystemSchema(s.name));
+    const q = filter.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((s) => s.name.toLowerCase().includes(q));
+  }, [schemas, showSystem, filter]);
+
+  useEffect(() => {
+    if (filterOpen) filterInputRef.current?.focus();
+  }, [filterOpen]);
 
   const executeOp = useCallback(
     async (op: PendingOp) => {
@@ -187,10 +203,24 @@ export function SchemaTree({
         setPending(null);
         // For DROP: refresh that schema's tables (table is gone).
         // For TRUNCATE/DELETE: schema list is unchanged, only rows.
+        // For DROP SCHEMA: reload schema list + drop cached tables.
         if (op.op === "drop") {
           await loadTables(op.schema);
+        } else if (op.op === "drop_schema") {
+          setExpandedSchemas((s) => {
+            const next = new Set(s);
+            next.delete(op.schema);
+            return next;
+          });
+          setTablesBySchema((m) => {
+            if (!(op.schema in m)) return m;
+            const copy = { ...m };
+            delete copy[op.schema];
+            return copy;
+          });
+          await loadSchemas();
         }
-        onTableMutation?.(op.op, op.schema, op.table);
+        if (op.table) onTableMutation?.(op.op, op.schema, op.table);
       } catch (e) {
         setSchemasError(String(e));
         setPending(null);
@@ -198,7 +228,7 @@ export function SchemaTree({
         setRunning(false);
       }
     },
-    [sessionId, loadTables, onTableMutation],
+    [sessionId, loadTables, loadSchemas, onTableMutation],
   );
 
   const runWithGuard = async (op: Omit<PendingOp, "analysis">) => {
@@ -262,6 +292,13 @@ export function SchemaTree({
       schema,
       table,
     });
+  const dropSchema = (schema: string) =>
+    runWithGuard({
+      sql: `DROP SCHEMA ${quote(schema)} CASCADE;`,
+      op: "drop_schema",
+      schema,
+      table: null,
+    });
 
   const afterCreate = async () => {
     if (createForSchema) {
@@ -272,8 +309,69 @@ export function SchemaTree({
 
   return (
     <div className="flex h-full flex-col bg-sidebar">
-      <div className="border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {t("explorer.schemas")}
+      <div className="border-b border-border">
+        <div className="flex items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <span>{t("explorer.schemas")}</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCreateSchemaOpen(true)}
+              title={t("explorer.newSchema")}
+              className="flex size-6 items-center justify-center rounded-sm hover:bg-accent"
+            >
+              <FolderPlus className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFilterOpen((v) => {
+                  if (v) setFilter("");
+                  return !v;
+                });
+              }}
+              title={t("explorer.filterSchemas")}
+              className={cn(
+                "flex size-6 items-center justify-center rounded-sm hover:bg-accent",
+                (filterOpen || filter) && "text-primary",
+              )}
+            >
+              <Filter className="size-3.5" />
+            </button>
+          </div>
+        </div>
+        {filterOpen && (
+          <div className="relative px-3 pb-2">
+            <input
+              ref={filterInputRef}
+              type="text"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setFilter("");
+                  setFilterOpen(false);
+                }
+              }}
+              placeholder={t("explorer.filterSchemasPlaceholder")}
+              className={cn(
+                "w-full rounded-md border border-border bg-background px-2 py-1 pr-7 text-xs",
+                "focus:outline-none focus:ring-1 focus:ring-primary",
+              )}
+            />
+            {filter && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilter("");
+                  filterInputRef.current?.focus();
+                }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
@@ -327,6 +425,17 @@ export function SchemaTree({
           >
             {t("explorer.newTable")}
           </ContextItem>
+          <ContextItem
+            icon={<Trash2 className="size-4" />}
+            destructive
+            onClick={() => {
+              const { schema } = schemaMenu;
+              setSchemaMenu(null);
+              void dropSchema(schema);
+            }}
+          >
+            {t("explorer.dropSchema")}
+          </ContextItem>
         </ContextMenu>
       )}
 
@@ -373,6 +482,14 @@ export function SchemaTree({
           schema={createForSchema}
           onApplied={() => void afterCreate()}
           onClose={() => setCreateForSchema(null)}
+        />
+      )}
+
+      {createSchemaOpen && (
+        <CreateSchemaDialog
+          sessionId={sessionId}
+          onApplied={() => void loadSchemas()}
+          onClose={() => setCreateSchemaOpen(false)}
         />
       )}
 

@@ -189,6 +189,9 @@ export function LlmConfigPanel() {
       setView(next);
       setForm((prev) => ({ ...prev, api_key: "" }));
       setSaved(true);
+      // Notify in-app subscribers (chat panel model picker, etc.) that
+      // the global LLM config changed so they can re-read defaults.
+      window.dispatchEvent(new CustomEvent("postgly:llm-config-changed"));
     } catch (err) {
       setSaveError(String(err));
     } finally {

@@ -219,10 +219,29 @@ pub async fn analyze_statement(
 }
 
 /// Pull `Plan.Plan Rows` from the first row of `EXPLAIN (FORMAT JSON)`.
+///
+/// For `UPDATE` / `DELETE`, the root node is `ModifyTable` and reports
+/// `Plan Rows: 0` — the meaningful estimate lives on the underlying
+/// scan plan one level down. Recurse into the first child when we hit
+/// `ModifyTable` so the UI doesn't always show "0 rows" for updates.
 fn extract_plan_rows(result: &QueryResult) -> Option<f64> {
     let raw = result.rows.first()?.first()?.as_ref()?;
     let value: serde_json::Value = serde_json::from_str(raw).ok()?;
     let plan = value.get(0)?.get("Plan")?;
+    plan_rows_for(plan)
+}
+
+fn plan_rows_for(plan: &serde_json::Value) -> Option<f64> {
+    let node_type = plan.get("Node Type").and_then(|v| v.as_str()).unwrap_or("");
+    if node_type == "ModifyTable" {
+        if let Some(child) = plan
+            .get("Plans")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+        {
+            return plan_rows_for(child);
+        }
+    }
     plan.get("Plan Rows").and_then(serde_json::Value::as_f64)
 }
 

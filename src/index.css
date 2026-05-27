@@ -363,21 +363,49 @@ html.dark[data-color="yellow"] {
     text-decoration: underline;
     text-underline-offset: 2px;
   }
+  /* Table itself stays in the natural inline flow; the Markdown
+   * component wraps it in an overflow-x:auto container so wide tables
+   * scroll horizontally instead of forcing every column to wrap. */
   .prose-chat table {
-    display: block;
-    overflow-x: auto;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 0.78rem;
+    width: max-content;
+    min-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
   }
   .prose-chat th,
   .prose-chat td {
-    border: 1px solid var(--border);
-    padding: 0.25rem 0.5rem;
+    padding: 0.35rem 0.65rem;
     text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+  .prose-chat th:last-child,
+  .prose-chat td:last-child {
+    border-right: 0;
+  }
+  .prose-chat tr:last-child td {
+    border-bottom: 0;
   }
   .prose-chat th {
     background: var(--muted);
     font-weight: 600;
+    color: var(--foreground);
+  }
+  .prose-chat tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--muted) 35%, transparent);
+  }
+  /* Inline code chips inside cells shouldn't gain extra padding that
+   * pushes rows out of alignment. */
+  .prose-chat td code,
+  .prose-chat th code {
+    padding: 0 0.25rem;
+    font-size: 0.85em;
   }
   .prose-chat hr {
     border: 0;
