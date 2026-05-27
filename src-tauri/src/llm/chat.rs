@@ -551,4 +551,188 @@ mod tests {
         assert_eq!(choice.message.tool_calls[0].function.name, "list_tables");
         assert_eq!(choice.finish_reason.as_deref(), Some("tool_calls"));
     }
+
+    /// Sanity-check the StreamAccumulator: tool-call fragments arriving
+    /// across several SSE events at the same `index` should be merged
+    /// into a single ToolCall with concatenated arguments.
+    #[test]
+    fn stream_accumulator_merges_tool_call_deltas_across_chunks() {
+        let mut acc = StreamAccumulator::default();
+        acc.merge_tool_call(ToolCallDelta {
+            index: 0,
+            id: Some("call_1".into()),
+            kind: Some("function".into()),
+            function: Some(FunctionDelta {
+                name: Some("list_".into()),
+                arguments: Some("{\"sch".into()),
+            }),
+        });
+        acc.merge_tool_call(ToolCallDelta {
+            index: 0,
+            id: None,
+            kind: None,
+            function: Some(FunctionDelta {
+                name: Some("tables".into()),
+                arguments: Some("ema\":\"public\"}".into()),
+            }),
+        });
+        // A second parallel call at index 1 fills the gap correctly.
+        acc.merge_tool_call(ToolCallDelta {
+            index: 1,
+            id: Some("call_2".into()),
+            kind: Some("function".into()),
+            function: Some(FunctionDelta {
+                name: Some("describe_table".into()),
+                arguments: Some("{}".into()),
+            }),
+        });
+        let (msg, usage) = acc.into_message_and_usage();
+        assert!(usage.is_none());
+        assert!(msg.content.is_none());
+        assert_eq!(msg.tool_calls.len(), 2);
+        assert_eq!(msg.tool_calls[0].id, "call_1");
+        assert_eq!(msg.tool_calls[0].function.name, "list_tables");
+        assert_eq!(
+            msg.tool_calls[0].function.arguments,
+            "{\"schema\":\"public\"}"
+        );
+        assert_eq!(msg.tool_calls[1].id, "call_2");
+        assert_eq!(msg.tool_calls[1].function.name, "describe_table");
+    }
+
+    /// Empty-string id/kind/name/arguments deltas should be no-ops so a
+    /// later non-empty fragment isn't clobbered or duplicated.
+    #[test]
+    fn stream_accumulator_ignores_empty_delta_fields() {
+        let mut acc = StreamAccumulator::default();
+        acc.merge_tool_call(ToolCallDelta {
+            index: 0,
+            id: Some(String::new()),
+            kind: Some(String::new()),
+            function: Some(FunctionDelta {
+                name: Some(String::new()),
+                arguments: None,
+            }),
+        });
+        acc.merge_tool_call(ToolCallDelta {
+            index: 0,
+            id: Some("real_id".into()),
+            kind: Some("function".into()),
+            function: Some(FunctionDelta {
+                name: Some("tool".into()),
+                arguments: Some(String::new()),
+            }),
+        });
+        let (msg, _) = acc.into_message_and_usage();
+        assert_eq!(msg.tool_calls.len(), 1);
+        assert_eq!(msg.tool_calls[0].id, "real_id");
+        assert_eq!(msg.tool_calls[0].kind, "function");
+        assert_eq!(msg.tool_calls[0].function.name, "tool");
+        assert!(msg.tool_calls[0].function.arguments.is_empty());
+    }
+
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// End-to-end streaming: hit a wiremock server that returns the
+    /// OpenAI SSE format, ensure each content delta is forwarded to the
+    /// caller and the final assembled message has the full text + usage.
+    #[tokio::test]
+    async fn send_stream_forwards_content_deltas_and_assembles_message() {
+        let server = MockServer::start().await;
+        let body = "data: {\"choices\":[{\"delta\":{\"content\":\"Olá\"}}]}\n\n\
+                    data: {\"choices\":[{\"delta\":{\"content\":\", \"}}]}\n\n\
+                    data: {\"choices\":[{\"delta\":{\"content\":\"mundo\"}}]}\n\n\
+                    data: {\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n\
+                    data: [DONE]\n\n";
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(body),
+            )
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/v1", server.uri());
+        let client = ChatClient::new(&url, "sk");
+        let request = ChatRequest {
+            model: "m".into(),
+            messages: vec![ChatMessage::user("oi")],
+            temperature: Some(0.0),
+            tools: Vec::new(),
+        };
+        let mut collected = String::new();
+        let (msg, usage) = client
+            .send_stream(&request, |d| collected.push_str(d))
+            .await
+            .unwrap();
+        assert_eq!(collected, "Olá, mundo");
+        assert_eq!(msg.content.as_deref(), Some("Olá, mundo"));
+        assert!(msg.tool_calls.is_empty());
+        let usage = usage.unwrap();
+        assert_eq!(usage.total_tokens, 5);
+    }
+
+    /// Tool-call deltas should NOT be pushed through the content
+    /// callback, but should land in the final ChatMessage.tool_calls.
+    #[tokio::test]
+    async fn send_stream_assembles_tool_calls_without_content_callbacks() {
+        let server = MockServer::start().await;
+        let body = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"list_\",\"arguments\":\"{}\"}}]}}]}\n\n\
+                    data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"tables\"}}]}}]}\n\n\
+                    data: [DONE]\n\n";
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(body),
+            )
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/v1", server.uri());
+        let client = ChatClient::new(&url, "sk");
+        let request = ChatRequest {
+            model: "m".into(),
+            messages: vec![ChatMessage::user("x")],
+            temperature: Some(0.0),
+            tools: Vec::new(),
+        };
+        let mut deltas = 0usize;
+        let (msg, _) = client
+            .send_stream(&request, |_d| deltas += 1)
+            .await
+            .unwrap();
+        assert_eq!(deltas, 0, "tool-call deltas must not be forwarded as text");
+        assert!(msg.content.is_none());
+        assert_eq!(msg.tool_calls.len(), 1);
+        assert_eq!(msg.tool_calls[0].id, "c1");
+        assert_eq!(msg.tool_calls[0].function.name, "list_tables");
+    }
+
+    /// Non-2xx responses to the streaming endpoint bubble up as a
+    /// Connection error rather than silently returning an empty
+    /// message.
+    #[tokio::test]
+    async fn send_stream_surfaces_http_errors() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("nope"))
+            .mount(&server)
+            .await;
+        let url = format!("{}/v1", server.uri());
+        let client = ChatClient::new(&url, "sk");
+        let request = ChatRequest {
+            model: "m".into(),
+            messages: vec![ChatMessage::user("x")],
+            temperature: Some(0.0),
+            tools: Vec::new(),
+        };
+        let err = client.send_stream(&request, |_d| {}).await.unwrap_err();
+        assert!(err.to_string().contains("401"));
+    }
 }
