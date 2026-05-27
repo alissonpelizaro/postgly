@@ -5,6 +5,7 @@ import {
   Copy,
   ExternalLink,
   Github,
+  Globe,
   Heart,
   Loader2,
   Terminal,
@@ -25,6 +26,7 @@ import type { VersionInfo } from "./use-version-check";
 const REPO_URL = "https://github.com/alissonpelizaro/postgly";
 const ISSUES_URL = `${REPO_URL}/issues`;
 const AUTHOR_URL = "https://github.com/alissonpelizaro";
+const SITE_URL = "https://alissonpelizaro.github.io/postgly/";
 
 const INSTALL_SH_URL =
   "https://raw.githubusercontent.com/alissonpelizaro/postgly/main/scripts/install.sh";
@@ -133,6 +135,18 @@ export function AboutDialog({ open, onOpenChange, version }: AboutDialogProps) {
                 <ExternalLink className="size-3" />
               </button>
             </dd>
+
+            <dt className="text-muted-foreground">Site oficial</dt>
+            <dd>
+              <button
+                type="button"
+                onClick={() => open_(SITE_URL)}
+                className="inline-flex items-center gap-1 text-foreground hover:text-primary"
+              >
+                alissonpelizaro.github.io/postgly
+                <ExternalLink className="size-3" />
+              </button>
+            </dd>
           </dl>
 
           <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
@@ -141,6 +155,10 @@ export function AboutDialog({ open, onOpenChange, version }: AboutDialogProps) {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => open_(SITE_URL)}>
+              <Globe className="size-4" />
+              Site oficial
+            </Button>
             <Button variant="outline" size="sm" onClick={() => open_(REPO_URL)}>
               <Github className="size-4" />
               GitHub

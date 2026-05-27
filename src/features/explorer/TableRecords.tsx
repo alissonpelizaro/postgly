@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ChevronLeft,
@@ -7,6 +7,7 @@ import {
   Loader2,
   Play,
   Plus,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,29 @@ import type {
 } from "./types";
 
 const PAGE_SIZE = 100;
+
+const qIdent = (name: string) => `"${name.replace(/"/g, '""')}"`;
+const qLit = (value: string | null): string =>
+  value === null ? "NULL" : `'${value.replace(/'/g, "''")}'`;
+
+/** Build a human-readable UPDATE statement for the row-edit confirmation
+ *  modal. The actual mutation still goes through the parameterized
+ *  `update_row` command — this string is only used for the analyzer
+ *  preview shown to the user. */
+function buildUpdatePreviewSql(
+  schema: string,
+  table: string,
+  pk: CellValue[],
+  changes: CellValue[],
+): string {
+  const setClause = changes
+    .map((c) => `${qIdent(c.column)} = ${qLit(c.value)}`)
+    .join(", ");
+  const whereClause = pk
+    .map((c) => `${qIdent(c.column)} = ${qLit(c.value)}`)
+    .join(" AND ");
+  return `UPDATE ${qIdent(schema)}.${qIdent(table)} SET ${setClause} WHERE ${whereClause};`;
+}
 
 type Mode = "filter" | "sql";
 
@@ -70,6 +94,17 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
   const [pendingGuard, setPendingGuard] = useState<{
     sql: string;
     analysis: StatementAnalysis | null;
+  } | null>(null);
+  const [pendingRowUpdate, setPendingRowUpdate] = useState<{
+    rowIndex: number;
+    changes: CellValue[];
+    sql: string;
+    analysis: StatementAnalysis | null;
+  } | null>(null);
+  const [rowUpdateRunning, setRowUpdateRunning] = useState(false);
+  const rowUpdateResolverRef = useRef<{
+    resolve: () => void;
+    reject: (e: unknown) => void;
   } | null>(null);
 
   const pkColumns = useMemo(
@@ -222,14 +257,90 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
 
   const saveRow = async (changes: CellValue[]) => {
     if (openRow === null || !result) return;
-    await explorerApi.updateRow(
-      sessionId,
-      table.schema,
-      table.name,
-      rowKey(openRow),
-      changes,
+
+    let confirmDestructive = true;
+    try {
+      confirmDestructive = (await settingsApi.get()).safety.confirm_destructive;
+    } catch {
+      // Settings unavailable → keep the safe default (confirm).
+    }
+    if (!confirmDestructive) {
+      await explorerApi.updateRow(
+        sessionId,
+        table.schema,
+        table.name,
+        rowKey(openRow),
+        changes,
+      );
+      await browse(filter, sort, page);
+      return;
+    }
+
+    const pk = rowKey(openRow);
+    const sql = buildUpdatePreviewSql(table.schema, table.name, pk, changes);
+    setPendingRowUpdate({ rowIndex: openRow, changes, sql, analysis: null });
+    void explorerApi
+      .analyzeStatement(sessionId, sql)
+      .then((analysis) =>
+        setPendingRowUpdate((p) => (p ? { ...p, analysis } : p)),
+      )
+      .catch(() => {
+        // Analysis failed — surface a minimal synthetic analysis so the
+        // dialog still shows what's about to run instead of hanging on
+        // the loader.
+        setPendingRowUpdate((p) =>
+          p
+            ? {
+                ...p,
+                analysis: {
+                  statements: [
+                    { kind: "update", has_where: true, preview: sql },
+                  ],
+                  destructive: true,
+                  unbounded_dml: false,
+                  estimated_rows: 1,
+                  explain_error: null,
+                },
+              }
+            : p,
+        );
+      });
+
+    return new Promise<void>((resolve, reject) => {
+      rowUpdateResolverRef.current = { resolve, reject };
+    });
+  };
+
+  const confirmRowUpdate = async () => {
+    const pending = pendingRowUpdate;
+    if (!pending) return;
+    setRowUpdateRunning(true);
+    try {
+      await explorerApi.updateRow(
+        sessionId,
+        table.schema,
+        table.name,
+        rowKey(pending.rowIndex),
+        pending.changes,
+      );
+      await browse(filter, sort, page);
+      rowUpdateResolverRef.current?.resolve();
+    } catch (e) {
+      rowUpdateResolverRef.current?.reject(e);
+    } finally {
+      rowUpdateResolverRef.current = null;
+      setPendingRowUpdate(null);
+      setRowUpdateRunning(false);
+    }
+  };
+
+  const cancelRowUpdate = () => {
+    if (rowUpdateRunning) return;
+    rowUpdateResolverRef.current?.reject(
+      new Error(t("explorer.destructive.cancelled")),
     );
-    await browse(filter, sort, page);
+    rowUpdateResolverRef.current = null;
+    setPendingRowUpdate(null);
   };
 
   const saveInsert = async (values: CellValue[]) => {
@@ -266,6 +377,18 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
             >
               <Plus />
               {t("explorer.newRecord")}
+            </Button>
+          )}
+          {mode === "filter" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={loading}
+              onClick={() => void browse(filter, sort, page)}
+              title={t("explorer.refresh")}
+            >
+              <RefreshCw className={loading ? "animate-spin" : undefined} />
+              {t("explorer.refresh")}
             </Button>
           )}
           <Button
@@ -440,6 +563,17 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
         running={loading}
         onCancel={cancelDestructiveRun}
         onConfirm={confirmDestructiveRun}
+      />
+
+      <DestructiveConfirmDialog
+        open={pendingRowUpdate !== null}
+        onOpenChange={(open) => {
+          if (!open) cancelRowUpdate();
+        }}
+        analysis={pendingRowUpdate?.analysis ?? null}
+        running={rowUpdateRunning}
+        onCancel={cancelRowUpdate}
+        onConfirm={confirmRowUpdate}
       />
     </div>
   );

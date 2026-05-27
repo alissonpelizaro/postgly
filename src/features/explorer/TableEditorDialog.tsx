@@ -9,6 +9,10 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
+import hljs from "highlight.js/lib/core";
+import sqlLang from "highlight.js/lib/languages/sql";
+
+hljs.registerLanguage("sql", sqlLang);
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,8 +28,17 @@ import { Label } from "@/components/ui/label";
 import { useI18n, type TKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 
+import { settingsApi } from "@/features/settings/api";
+
 import { explorerApi } from "./api";
-import type { ColumnInfo, IndexInfo, SchemaInfo, TableInfo } from "./types";
+import { DestructiveConfirmDialog } from "./DestructiveConfirmDialog";
+import type {
+  ColumnInfo,
+  IndexInfo,
+  SchemaInfo,
+  StatementAnalysis,
+  TableInfo,
+} from "./types";
 
 type FkAction = "no_action" | "restrict" | "cascade" | "set_null" | "set_default";
 
@@ -106,7 +119,7 @@ const TYPE_GROUPS: { groupKey: string; types: string[] }[] = [
       "double precision",
     ],
   },
-  { groupKey: "text", types: ["text", "varchar(255)", "char(1)"] },
+  { groupKey: "text", types: ["text", "varchar", "char"] },
   { groupKey: "boolean", types: ["boolean"] },
   {
     groupKey: "date",
@@ -155,10 +168,48 @@ function emptyColumn(): ColumnDraft {
   };
 }
 
+/** Map a Postgres `information_schema.data_type` value to the canonical
+ *  short name used in the type select (e.g. `character varying` → `varchar`,
+ *  `timestamp without time zone` → `timestamp`). Falls back to the raw value
+ *  if no alias is known. */
+function normalizePgType(raw: string): string {
+  const t = raw.trim().toLowerCase();
+  switch (t) {
+    case "character varying":
+      return "varchar";
+    case "character":
+      return "char";
+    case "timestamp without time zone":
+      return "timestamp";
+    case "timestamp with time zone":
+      return "timestamptz";
+    case "time without time zone":
+      return "time";
+    case "time with time zone":
+      return "timetz";
+    case "int":
+    case "int4":
+      return "integer";
+    case "int2":
+      return "smallint";
+    case "int8":
+      return "bigint";
+    case "float4":
+      return "real";
+    case "float8":
+      return "double precision";
+    case "bool":
+      return "boolean";
+    default:
+      return raw;
+  }
+}
+
 function columnFromInfo(c: ColumnInfo): ColumnDraft {
+  const canonicalType = normalizePgType(c.data_type);
   const original: OriginalColumn = {
     name: c.name,
-    type: c.data_type,
+    type: canonicalType,
     nullable: c.nullable,
     default: c.default,
     isPrimaryKey: c.is_primary_key,
@@ -166,7 +217,7 @@ function columnFromInfo(c: ColumnInfo): ColumnDraft {
   return {
     id: newId(),
     name: c.name,
-    type: c.data_type,
+    type: canonicalType,
     nullable: c.nullable,
     primaryKey: c.is_primary_key,
     unique: false,
@@ -257,6 +308,10 @@ export function TableEditorDialog({
   const [loading, setLoading] = useState(mode === "edit");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingGuard, setPendingGuard] = useState<{
+    sql: string;
+    analysis: StatementAnalysis | null;
+  } | null>(null);
 
   // FK picker data — schemas, tables-per-schema, columns-per-table.
   const [allSchemas, setAllSchemas] = useState<SchemaInfo[]>([]);
@@ -462,14 +517,22 @@ export function TableEditorDialog({
     return stmts.join("\n\n");
   }, [mode, schema, table, name, columns, indexes]);
 
+  const highlightedSql = useMemo(() => {
+    if (!sql) return "";
+    try {
+      return hljs.highlight(sql, { language: "sql" }).value;
+    } catch {
+      return "";
+    }
+  }, [sql]);
+
   const canApply = sql.trim().length > 0 && !busy && !loading;
 
-  const submit = async () => {
-    if (!sql.trim()) return;
+  const executeSubmit = async (statementSql: string) => {
     setBusy(true);
     setError(null);
     try {
-      await explorerApi.runQuery(sessionId, sql);
+      await explorerApi.runQuery(sessionId, statementSql);
       await explorerApi.refreshDatabaseSchema(sessionId);
       onApplied();
       onClose();
@@ -478,6 +541,47 @@ export function TableEditorDialog({
     } finally {
       setBusy(false);
     }
+  };
+
+  const submit = async () => {
+    if (!sql.trim()) return;
+
+    let confirmDestructive = true;
+    try {
+      confirmDestructive = (await settingsApi.get()).safety.confirm_destructive;
+    } catch {
+      // Settings unavailable → keep the safe default (confirm).
+    }
+    if (!confirmDestructive) {
+      await executeSubmit(sql);
+      return;
+    }
+
+    setPendingGuard({ sql, analysis: null });
+    try {
+      const analysis = await explorerApi.analyzeStatement(sessionId, sql);
+      if (!analysis.destructive) {
+        setPendingGuard(null);
+        await executeSubmit(sql);
+        return;
+      }
+      setPendingGuard({ sql, analysis });
+    } catch (e) {
+      setPendingGuard(null);
+      setError(String(e));
+    }
+  };
+
+  const confirmGuard = async () => {
+    if (!pendingGuard) return;
+    const { sql: pendingSql } = pendingGuard;
+    setPendingGuard(null);
+    await executeSubmit(pendingSql);
+  };
+
+  const cancelGuard = () => {
+    if (busy) return;
+    setPendingGuard(null);
   };
 
   const title =
@@ -490,6 +594,7 @@ export function TableEditorDialog({
       : t("explorer.createTable.editDesc", { schema, table: table ?? "" });
 
   return (
+    <>
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-4xl">
         <DialogHeader className="border-b border-border px-5 py-4">
@@ -545,8 +650,15 @@ export function TableEditorDialog({
               <Label className="mb-1.5 block text-xs">
                 {t("explorer.createTable.previewLabel")}
               </Label>
-              <pre className="max-h-48 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-xs text-muted-foreground">
-                {sql || "—"}
+              <pre className="max-h-48 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-xs text-foreground">
+                {sql ? (
+                  <code
+                    className="hljs whitespace-pre bg-transparent p-0"
+                    dangerouslySetInnerHTML={{ __html: highlightedSql }}
+                  />
+                ) : (
+                  <code className="whitespace-pre text-muted-foreground">—</code>
+                )}
               </pre>
             </div>
           </div>
@@ -574,6 +686,18 @@ export function TableEditorDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <DestructiveConfirmDialog
+      open={pendingGuard !== null}
+      onOpenChange={(open) => {
+        if (!open) cancelGuard();
+      }}
+      analysis={pendingGuard?.analysis ?? null}
+      running={busy}
+      onCancel={cancelGuard}
+      onConfirm={confirmGuard}
+    />
+    </>
   );
 }
 
@@ -613,19 +737,7 @@ function ColumnsSection(props: ColumnsSectionProps) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs">{t("explorer.createTable.columnsLabel")}</Label>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={onAdd}
-          disabled={busy}
-        >
-          <Plus />
-          {t("explorer.createTable.addColumn")}
-        </Button>
-      </div>
+      <Label className="text-xs">{t("explorer.createTable.columnsLabel")}</Label>
 
       <div className="flex flex-col gap-2">
         {columns.map((col) => (
@@ -651,6 +763,18 @@ function ColumnsSection(props: ColumnsSectionProps) {
           </p>
         )}
       </div>
+
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={onAdd}
+        disabled={busy}
+        className="self-start"
+      >
+        <Plus />
+        {t("explorer.createTable.addColumn")}
+      </Button>
     </div>
   );
 }
@@ -1013,19 +1137,7 @@ function IndexesSection({
   const { t } = useI18n();
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs">{t("explorer.createTable.indexesLabel")}</Label>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={onAdd}
-          disabled={busy}
-        >
-          <Plus />
-          {t("explorer.createTable.addIndex")}
-        </Button>
-      </div>
+      <Label className="text-xs">{t("explorer.createTable.indexesLabel")}</Label>
 
       {indexes.length === 0 ? (
         <p className="text-xs text-muted-foreground">
@@ -1107,6 +1219,18 @@ function IndexesSection({
           ))}
         </div>
       )}
+
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={onAdd}
+        disabled={busy}
+        className="self-start"
+      >
+        <Plus />
+        {t("explorer.createTable.addIndex")}
+      </Button>
     </div>
   );
 }

@@ -1,9 +1,30 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Postgly</title>
+    <script>
+      // Resolve the theme before React paints to avoid a light-mode
+      // flash on first launch. Keep this in sync with theme-provider.tsx.
+      (function () {
+        try {
+          var stored = localStorage.getItem("postgly-theme");
+          var theme = stored || "dark";
+          var resolved =
+            theme === "system"
+              ? window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : theme;
+          var root = document.documentElement;
+          root.classList.remove("light", "dark");
+          root.classList.add(resolved);
+        } catch (_) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
   </head>
 
   <body>
