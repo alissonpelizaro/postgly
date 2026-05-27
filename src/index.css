@@ -12,6 +12,10 @@
 :root {
   --radius: 0.875rem;
   color-scheme: light;
+  /* Lets `transition: height` animate between intrinsic sizes like
+   * `auto`. Used by the streaming chat bubble so its height grows
+   * smoothly as text arrives instead of snapping per chunk. */
+  interpolate-size: allow-keywords;
 
   --background: oklch(1 0 0);
   --foreground: oklch(0.18 0.015 270);
@@ -579,6 +583,13 @@ html.dark[data-color="yellow"] {
   .hljs-deletion                     { color: var(--destructive); }
   .hljs-emphasis                     { font-style: italic; }
   .hljs-strong                       { font-weight: 700; }
+
+  /* Streaming chat bubble — smooth height growth while text streams in.
+   * Relies on `interpolate-size: allow-keywords` on :root. */
+  .streaming-bubble {
+    transition: height 0.12s ease-out;
+    overflow: hidden;
+  }
 
   /* Typing indicator dots — staggered opacity/scale pulse. */
   @keyframes typing-dot {

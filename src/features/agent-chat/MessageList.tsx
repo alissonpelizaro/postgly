@@ -42,9 +42,13 @@ export function MessageList({
   const { t } = useI18n();
   const endRef = useRef<HTMLDivElement>(null);
 
+  // Scroll on new turns AND on every streamed chunk — `messages.length`
+  // doesn't change while the assistant bubble grows, so we also key on
+  // the trailing message's content length.
+  const lastContentLen = messages[messages.length - 1]?.content.length ?? 0;
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, pending]);
+  }, [messages.length, pending, lastContentLen]);
 
   if (messages.length === 0 && !pending) {
     return (
@@ -65,6 +69,10 @@ export function MessageList({
         <MessageBubble
           key={m.id}
           message={m}
+          // Last assistant bubble during pending == the one being streamed.
+          // Drives the smooth height transition + suppresses hover affordances
+          // until the reply is settled.
+          streaming={!!pending && idx === lastAssistantIdx && m.role === "assistant"}
           onApprove={onApproveProposal ? () => onApproveProposal(m.id) : undefined}
           onReject={onRejectProposal ? () => onRejectProposal(m.id) : undefined}
           onRegenerate={
@@ -96,6 +104,7 @@ function findLastIndex<T>(arr: T[], pred: (item: T) => boolean): number {
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  streaming?: boolean;
   onApprove?: () => void;
   onReject?: () => void;
   onRegenerate?: () => void;
@@ -104,6 +113,7 @@ interface MessageBubbleProps {
 
 function MessageBubble({
   message,
+  streaming,
   onApprove,
   onReject,
   onRegenerate,
@@ -195,6 +205,7 @@ function MessageBubble({
             isUser
               ? "bg-primary text-primary-foreground"
               : "bg-card text-foreground border border-border",
+            streaming && "streaming-bubble",
           )}
         >
           <Markdown content={message.content} inverted={isUser} />
