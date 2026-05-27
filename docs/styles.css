@@ -344,7 +344,7 @@ html[data-theme="light"] .dl pre {
 }
 .bubble {
   max-width: 86%;
-  padding: 7px 10px; border-radius: 12px;
+  padding: 10px 10px; border-radius: 12px;
   font-size: 12px; line-height: 1.45;
 }
 .bubble p { margin: 0; }
@@ -388,7 +388,7 @@ html[data-theme="light"] .dl pre {
 .ac-target { font-family: var(--font-mono); color: var(--fg); }
 .ac-rows { margin-left: auto; }
 .ac-sql {
-  margin: 0; padding: 8px 10px;
+  margin: 0; padding: 18px 10px;
   font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
   color: #d6def0; background: var(--bg-code);
   overflow-x: auto; white-space: pre;
@@ -399,14 +399,39 @@ html[data-theme="light"] .dl pre {
   background: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 .ac-btn {
-  padding: 5px 11px; border-radius: 7px;
-  font-size: 12px; font-weight: 600;
+  padding: 3px 9px; border-radius: 6px;
+  font-size: 11px; font-weight: 600;
   border: 1px solid var(--border);
   background: var(--bg-elev); color: var(--fg);
   cursor: pointer;
 }
 .ac-btn.approve {
   background: var(--accent-grad); color: #fff; border-color: transparent;
+}
+
+/* DELETE approval has a destructive red tint while pending so the
+ * stakes are obvious; flips to green once the visitor approves so
+ * the "done" state still reads as success. UPDATE keeps the neutral
+ * brand tint (same as INSERT). */
+.approval-card[data-kind="delete"] {
+  border-color: color-mix(in srgb, #ff5f56 55%, transparent);
+  background: color-mix(in srgb, #ff5f56 9%, transparent);
+}
+.approval-card[data-kind="delete"] .ac-head {
+  border-bottom-color: color-mix(in srgb, #ff5f56 30%, transparent);
+}
+.approval-card[data-kind="delete"] .ac-kind {
+  background: color-mix(in srgb, #ff5f56 30%, transparent);
+}
+.approval-card[data-kind="delete"][data-state="approved"] {
+  border-color: color-mix(in srgb, #27c93f 60%, transparent);
+  background: color-mix(in srgb, #27c93f 10%, transparent);
+}
+.approval-card[data-kind="delete"][data-state="approved"] .ac-head {
+  border-bottom-color: color-mix(in srgb, #27c93f 35%, transparent);
+}
+.approval-card[data-kind="delete"][data-state="approved"] .ac-kind {
+  background: color-mix(in srgb, #27c93f 30%, transparent);
 }
 /* Generic fade-in helper for the hero chat: elements start hidden +
  * lifted, then the `.in` class transitions them into place. Elements

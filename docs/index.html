@@ -175,18 +175,14 @@
                 </div>
 
                 <div class="bubble agent fade-anim" id="hc-agent">
-                  <p>
-                    I'll insert this record into <code>public.customers</code>.
-                    Because it's a write, I need your approval before running it.
-                  </p>
+                  <p id="hc-intro"></p>
                   <div class="approval-card" id="hc-approval">
                     <div class="ac-head">
-                      <span class="ac-kind">INSERT</span>
-                      <span class="ac-target">public.customers</span>
+                      <span class="ac-kind" id="hc-kind"></span>
+                      <span class="ac-target" id="hc-target"></span>
                       <span class="ac-status" id="hc-approval-status"></span>
                     </div>
-                    <pre class="ac-sql"><span class="kw">INSERT INTO</span> public.customers (name, email)
-<span class="kw">VALUES</span> (<span class="str">'Acme Pro'</span>, <span class="str">'acme.pro@example.com'</span>);</pre>
+                    <pre class="ac-sql" id="hc-sql"></pre>
                     <div class="ac-actions">
                       <button class="ac-btn reject" type="button" id="hc-reject">Reject</button>
                       <button class="ac-btn approve" type="button" id="hc-approve">Approve &amp; run</button>
