@@ -148,36 +148,50 @@
               <span class="tl-dot red"></span>
               <span class="tl-dot yel"></span>
               <span class="tl-dot grn"></span>
-              <span class="tl-title">Postgly — production · public.orders</span>
+              <span class="tl-title">Postgly — production · agent · public.customers</span>
             </div>
             <div class="mock-body">
               <div class="mock-sidebar">
                 <div class="mock-tree-head">SCHEMAS</div>
                 <div class="mock-tree-item open">▾ public</div>
-                <div class="mock-tree-item sub active">▸ orders</div>
-                <div class="mock-tree-item sub">▸ users</div>
+                <div class="mock-tree-item sub active">▸ customers</div>
+                <div class="mock-tree-item sub">▸ orders</div>
                 <div class="mock-tree-item sub">▸ products</div>
                 <div class="mock-tree-item sub">▸ payments</div>
                 <div class="mock-tree-item">▸ analytics</div>
               </div>
-              <div class="mock-main">
-                <div class="mock-nlbar">
-                  <span class="spark">✨</span>
-                  <span class="nl-text">quarterly sales per customer, in descending order</span>
-                  <span class="mock-btn">Generate</span>
+              <div class="mock-main mock-chat">
+                <div class="mock-chat-head">
+                  <span class="bot-mark">🤖</span> Agent
+                  <span class="chip-small">connected · public</span>
                 </div>
-                <pre class="mock-code"><span class="kw">SELECT</span> u.name, <span class="fn">SUM</span>(o.total) <span class="kw">AS</span> total
-<span class="kw">FROM</span> orders o
-<span class="kw">JOIN</span> users u <span class="kw">ON</span> u.id = o.user_id
-<span class="kw">WHERE</span> o.created_at &gt;= <span class="fn">date_trunc</span>(<span class="str">'quarter'</span>, <span class="fn">now</span>())
-<span class="kw">GROUP BY</span> u.name
-<span class="kw">ORDER BY</span> total <span class="kw">DESC</span>;</pre>
-                <div class="mock-grid">
-                  <div class="mg-row mg-head"><span>name</span><span>total</span></div>
-                  <div class="mg-row"><span>Acme Co.</span><span>184,920.00</span></div>
-                  <div class="mg-row"><span>Globex</span><span>121,300.50</span></div>
-                  <div class="mg-row"><span>Initech</span><span>98,440.75</span></div>
-                  <div class="mg-row"><span>Umbrella</span><span>72,015.20</span></div>
+
+                <div class="bubble user">
+                  Add a new customer: Acme Pro — email acme.pro@example.com
+                </div>
+
+                <div class="bubble agent">
+                  <p>
+                    I'll insert this record into <code>public.customers</code>.
+                    Because it's a write, I need your approval before running it.
+                  </p>
+                  <div class="approval-card">
+                    <div class="ac-head">
+                      <span class="ac-kind">INSERT</span>
+                      <span class="ac-target">public.customers</span>
+                      <span class="ac-rows">1 row affected</span>
+                    </div>
+                    <pre class="ac-sql"><span class="kw">INSERT INTO</span> public.customers (name, email)
+<span class="kw">VALUES</span> (<span class="str">'Acme Pro'</span>, <span class="str">'acme.pro@example.com'</span>);</pre>
+                    <div class="ac-actions">
+                      <button class="ac-btn reject" type="button">Reject</button>
+                      <button class="ac-btn approve" type="button">Approve &amp; run</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="typing" aria-hidden="true">
+                  <span></span><span></span><span></span>
                 </div>
               </div>
             </div>
