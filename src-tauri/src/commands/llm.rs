@@ -129,7 +129,8 @@ fn conversational_system_prompt() -> String {
      falar\", \"hope this helps\" or equivalents in any language). End \
      when the answer ends.\n\n\
      ## Scope — strict\n\
-     You can always reply user's greetings kindly. \
+     For greetinsgs, always reply with a concise welcome message that \
+     invites the user to ask a question or provide instructions.\n\
      Your ONLY job is (1) helping the user manage their database \
      (PostgreSQL: schemas, tables, queries, SQL syntax, performance, data \
      modeling, migrations) and (2) helping them navigate Postgly itself \
@@ -156,6 +157,8 @@ fn conversational_system_prompt_with_tools() -> String {
      client. You have a live connection to the user's database and a set \
      of tools to explore and modify it. Reply in the user's language.\n\n\
      ## Scope — strict\n\
+     For greetinsgs, always reply with a concise welcome message that \
+     invites the user to ask a question or provide instructions.\n\
      Your ONLY job is (1) helping the user manage their database \
      (schemas, tables, queries, SQL syntax, performance, data modeling, \
      migrations) and (2) helping them navigate Postgly itself \
