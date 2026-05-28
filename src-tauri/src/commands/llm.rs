@@ -622,6 +622,421 @@ fn now_seconds() -> i64 {
         .unwrap_or(0)
 }
 
+/// Findings returned by [`analyze_query_plan`]. Bundles the raw plans
+/// (so the UI can render the visual tree without re-running EXPLAIN) and
+/// the LLM's structured optimisation report.
+#[derive(Debug, Serialize)]
+pub struct QueryAnalysis {
+    /// Free-text summary in the user's language.
+    pub summary: String,
+    pub bottlenecks: Vec<Bottleneck>,
+    pub index_suggestions: Vec<IndexSuggestion>,
+    /// Rewritten SQL with equivalent semantics. `None` when the model
+    /// did not find a worthwhile rewrite.
+    pub optimized_sql: Option<String>,
+    /// Plain-text bullet points describing the rewrite, when the model
+    /// supplied one.
+    pub rewrites: Vec<String>,
+    /// LLM's claimed speed-up factor (e.g. `5.0` for 5×). Falls back to
+    /// the cost ratio when both plans were captured.
+    pub estimated_gain_factor: Option<f64>,
+    /// Raw `EXPLAIN [ANALYZE] (FORMAT JSON)` for the original SQL.
+    pub original_plan: String,
+    /// `EXPLAIN (FORMAT JSON)` of the rewritten SQL — `None` when the
+    /// LLM did not rewrite or the planner refused.
+    pub optimized_plan: Option<String>,
+    pub original_total_cost: Option<f64>,
+    pub optimized_total_cost: Option<f64>,
+    /// `Execution Time` from ANALYZE on the original plan, when present.
+    pub original_execution_ms: Option<f64>,
+    pub usage: TokenUsage,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Bottleneck {
+    pub node: String,
+    pub issue: String,
+    /// `high` | `medium` | `low`.
+    pub severity: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IndexSuggestion {
+    /// Full DDL the user can copy and run.
+    pub sql: String,
+    pub rationale: String,
+    pub table: String,
+    pub columns: Vec<String>,
+}
+
+/// What the LLM is asked to emit. Mirrors the public [`QueryAnalysis`]
+/// fields it controls.
+#[derive(Debug, Deserialize)]
+struct LlmAnalysis {
+    #[serde(default)]
+    summary: String,
+    #[serde(default)]
+    bottlenecks: Vec<Bottleneck>,
+    #[serde(default, alias = "indexes")]
+    index_suggestions: Vec<IndexSuggestion>,
+    #[serde(default)]
+    optimized_sql: Option<String>,
+    #[serde(default)]
+    rewrites: Vec<String>,
+    #[serde(default)]
+    estimated_gain_factor: Option<f64>,
+}
+
+/// Run EXPLAIN (ANALYZE for SELECT, plain otherwise), ask the LLM to
+/// audit the plan against the connection's schema, and return structured
+/// findings: bottlenecks, suggested indexes, rewritten SQL, estimated
+/// gain. The original and rewritten plans are returned verbatim so the
+/// UI can render a before/after visual without a round-trip.
+#[tauri::command]
+pub async fn analyze_query_plan<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    sql: String,
+) -> AppResult<QueryAnalysis> {
+    let trimmed = sql.trim().trim_end_matches(';').trim();
+    if trimmed.is_empty() {
+        return Err(AppError::Other("empty SQL".into()));
+    }
+
+    // LLM gate — fail fast with a clear message rather than running
+    // EXPLAIN ANALYZE first and then discovering we can't analyse it.
+    let cfg = settings::load(&app)?.llm;
+    if cfg.base_url.trim().is_empty() || cfg.model.trim().is_empty() {
+        return Err(AppError::Other(
+            "LLM is not configured — set base URL and model in Settings.".into(),
+        ));
+    }
+    let api_key = settings::get_secret(&app, LLM_API_KEY_ACCOUNT)?;
+    if api_key.trim().is_empty() {
+        return Err(AppError::Other(
+            "LLM API key is not configured — set it in Settings.".into(),
+        ));
+    }
+
+    let session = session_for(&state, &session_id)?;
+    let schema = get_database_schema(state.clone(), session_id.clone()).await?;
+
+    let stmt_analysis = crate::db::sql_safety::analyze(trimmed);
+    let is_select = stmt_analysis
+        .statements
+        .first()
+        .map(|s| matches!(s.kind, crate::db::sql_safety::StatementKind::Select))
+        .unwrap_or(false);
+    let analyze_opts = if is_select {
+        "ANALYZE true, VERBOSE false, COSTS true, BUFFERS true, FORMAT JSON"
+    } else {
+        "ANALYZE false, VERBOSE false, COSTS true, FORMAT JSON"
+    };
+    let explain_sql = format!("EXPLAIN ({analyze_opts}) {trimmed}");
+    let plan_result = session.execute(&explain_sql).await?;
+    let original_plan = plan_result
+        .rows
+        .first()
+        .and_then(|r| r.first())
+        .and_then(|c| c.as_ref())
+        .ok_or_else(|| AppError::Other("EXPLAIN returned no rows".into()))?
+        .clone();
+
+    let (original_total_cost, original_execution_ms) = plan_summary(&original_plan);
+
+    // Slice the schema down to the tables this plan actually touches so
+    // the LLM context stays small. Falls back to "all user tables" only
+    // when the plan referenced nothing recognisable (very unusual).
+    let referenced = collect_referenced_relations(&original_plan);
+    let schema_snippet = format_schema_for_tables(&schema, &referenced);
+
+    let user_prompt = build_analysis_prompt(
+        trimmed,
+        &original_plan,
+        &schema_snippet,
+        original_execution_ms,
+        original_total_cost,
+        is_select,
+    );
+
+    let client = ChatClient::new(&cfg.base_url, &api_key);
+    let request = ChatRequest {
+        model: cfg.model.clone(),
+        messages: vec![
+            ChatMessage::system(analysis_system_prompt()),
+            ChatMessage::user(user_prompt),
+        ],
+        temperature: Some(0.1),
+        tools: Vec::new(),
+    };
+    let response = client.send(&request).await?;
+    let usage = response.usage.clone().unwrap_or_default();
+    let raw_content = response
+        .choices
+        .into_iter()
+        .next()
+        .and_then(|c| c.message.content)
+        .unwrap_or_default();
+    let llm: LlmAnalysis = parse_analysis_json(&raw_content)
+        .ok_or_else(|| AppError::Other("LLM did not return parseable JSON".into()))?;
+
+    // EXPLAIN the rewritten SQL to back the comparison with hard numbers
+    // — never with ANALYZE, since the user may not want to run the
+    // rewrite against live data yet.
+    let (optimized_plan, optimized_total_cost) = match llm.optimized_sql.as_ref() {
+        Some(opt) if !opt.trim().is_empty() => {
+            let opt_trim = opt.trim().trim_end_matches(';').trim();
+            let opt_sql = format!("EXPLAIN (FORMAT JSON) {opt_trim}");
+            match session.execute(&opt_sql).await {
+                Ok(r) => {
+                    let plan = r
+                        .rows
+                        .first()
+                        .and_then(|row| row.first())
+                        .and_then(|c| c.as_ref())
+                        .cloned();
+                    let cost = plan.as_deref().and_then(|p| plan_summary(p).0);
+                    (plan, cost)
+                }
+                Err(_) => (None, None),
+            }
+        }
+        _ => (None, None),
+    };
+
+    let estimated_gain_factor = llm.estimated_gain_factor.or_else(|| {
+        match (original_total_cost, optimized_total_cost) {
+            (Some(o), Some(n)) if n > 0.0 => Some(o / n),
+            _ => None,
+        }
+    });
+
+    Ok(QueryAnalysis {
+        summary: llm.summary,
+        bottlenecks: llm.bottlenecks,
+        index_suggestions: llm.index_suggestions,
+        optimized_sql: llm.optimized_sql,
+        rewrites: llm.rewrites,
+        estimated_gain_factor,
+        original_plan,
+        optimized_plan,
+        original_total_cost,
+        optimized_total_cost,
+        original_execution_ms,
+        usage,
+    })
+}
+
+fn analysis_system_prompt() -> &'static str {
+    "You are a senior PostgreSQL query optimiser. Given the EXPLAIN (often \
+     EXPLAIN ANALYZE) of a query plus the relevant schema, you return a \
+     STRICT JSON object — no prose, no markdown, no code fences — with the \
+     following shape and field names exactly:\n\
+     {\n  \
+       \"summary\": \"short paragraph explaining what the plan does and where it hurts\",\n  \
+       \"bottlenecks\": [ { \"node\": \"Seq Scan on public.orders\", \"issue\": \"why it's slow\", \"severity\": \"high|medium|low\" } ],\n  \
+       \"index_suggestions\": [ { \"sql\": \"CREATE INDEX CONCURRENTLY ...\", \"rationale\": \"...\", \"table\": \"public.orders\", \"columns\": [\"customer_id\",\"created_at\"] } ],\n  \
+       \"optimized_sql\": \"SELECT ... ; or null if no rewrite helps\",\n  \
+       \"rewrites\": [\"bullet describing each rewrite step\"],\n  \
+       \"estimated_gain_factor\": 5.0\n\
+     }\n\n\
+     Rules:\n\
+     - Only propose indexes that the schema permits — never invent columns.\n\
+     - Prefer composite indexes in the right column order, and `CREATE INDEX CONCURRENTLY` for tables.\n\
+     - Skip suggesting indexes that already exist according to the schema.\n\
+     - Rewrites must preserve query semantics. If you can't safely rewrite, set optimized_sql to null and rewrites to [].\n\
+     - estimated_gain_factor is a multiplier (2.0 == 2× faster). Use null when uncertain.\n\
+     - Match the user's language in summary, issue and rationale fields.\n\
+     - Output JSON only."
+}
+
+fn build_analysis_prompt(
+    sql: &str,
+    plan: &str,
+    schema: &str,
+    exec_ms: Option<f64>,
+    total_cost: Option<f64>,
+    analyze_ran: bool,
+) -> String {
+    let mut out = String::new();
+    out.push_str("Original SQL:\n```sql\n");
+    out.push_str(sql);
+    out.push_str("\n```\n\n");
+    if analyze_ran {
+        out.push_str("Plan was produced with EXPLAIN ANALYZE — `Actual Time` and `Actual Rows` reflect a real run.\n");
+    } else {
+        out.push_str("Plan was produced with EXPLAIN (no ANALYZE) — only planner estimates are available.\n");
+    }
+    if let Some(c) = total_cost {
+        out.push_str(&format!("Planner total cost: {c:.2}\n"));
+    }
+    if let Some(t) = exec_ms {
+        out.push_str(&format!("Measured execution time: {t:.2} ms\n"));
+    }
+    out.push_str("\nPlan (EXPLAIN FORMAT JSON):\n```json\n");
+    out.push_str(plan);
+    out.push_str("\n```\n\nRelevant schema:\n");
+    out.push_str(schema);
+    out.push_str("\n\nReturn the JSON analysis now.");
+    out
+}
+
+/// Walk an EXPLAIN JSON tree and collect every `(schema?, relation)`
+/// pair it references. Skips nodes that don't touch a base relation
+/// (hash, sort, aggregate, ...).
+fn collect_referenced_relations(plan_json: &str) -> Vec<(Option<String>, String)> {
+    let mut out: Vec<(Option<String>, String)> = Vec::new();
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(plan_json) else {
+        return out;
+    };
+    let root_plan = value
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|o| o.get("Plan"));
+    if let Some(p) = root_plan {
+        walk_plan(p, &mut out);
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn walk_plan(node: &serde_json::Value, out: &mut Vec<(Option<String>, String)>) {
+    if let Some(name) = node.get("Relation Name").and_then(|v| v.as_str()) {
+        let schema = node
+            .get("Schema")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        out.push((schema, name.to_string()));
+    }
+    if let Some(children) = node.get("Plans").and_then(|v| v.as_array()) {
+        for c in children {
+            walk_plan(c, out);
+        }
+    }
+    if let Some(sub) = node.get("Subplan Name") {
+        if let Some(plans) = sub.get("Plans").and_then(|v| v.as_array()) {
+            for c in plans {
+                walk_plan(c, out);
+            }
+        }
+    }
+}
+
+/// Compact, model-friendly view of the tables that appear in the plan:
+/// names, types, primary keys, foreign keys and existing indexes (the
+/// latter so the model doesn't suggest indexes that are already there).
+fn format_schema_for_tables(
+    schema: &DatabaseSchema,
+    referenced: &[(Option<String>, String)],
+) -> String {
+    let mut out = String::new();
+    let mut wrote = false;
+    for table in &schema.tables {
+        let matches = referenced.iter().any(|(s, n)| {
+            n == &table.name && s.as_deref().map(|x| x == table.schema).unwrap_or(true)
+        });
+        if !matches && !referenced.is_empty() {
+            continue;
+        }
+        wrote = true;
+        out.push_str(&format!("- {}.{}", table.schema, table.name));
+        if !table.primary_key.is_empty() {
+            out.push_str(&format!("  PK({})", table.primary_key.join(", ")));
+        }
+        out.push('\n');
+        for col in &table.columns {
+            out.push_str(&format!("    {} {}", col.name, col.data_type));
+            if !col.nullable {
+                out.push_str(" NOT NULL");
+            }
+            if let Some(c) = col.comment.as_deref() {
+                out.push_str(&format!("  -- {c}"));
+            }
+            out.push('\n');
+        }
+        for fk in &table.foreign_keys {
+            out.push_str(&format!(
+                "    FK({}) -> {}.{}({})\n",
+                fk.columns.join(", "),
+                fk.ref_schema,
+                fk.ref_table,
+                fk.ref_columns.join(", ")
+            ));
+        }
+    }
+    if !wrote {
+        out.push_str("(no matching tables in cached schema)\n");
+    }
+    out
+}
+
+fn plan_summary(plan_json: &str) -> (Option<f64>, Option<f64>) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(plan_json) else {
+        return (None, None);
+    };
+    let root = value.as_array().and_then(|a| a.first());
+    let total_cost = root
+        .and_then(|o| o.get("Plan"))
+        .and_then(|p| p.get("Total Cost"))
+        .and_then(|v| v.as_f64());
+    let exec_ms = root
+        .and_then(|o| o.get("Execution Time"))
+        .and_then(|v| v.as_f64());
+    (total_cost, exec_ms)
+}
+
+/// Parse the LLM's response, recovering from code fences and from a
+/// preamble of explanation text the model sometimes adds despite the
+/// instructions.
+fn parse_analysis_json(raw: &str) -> Option<LlmAnalysis> {
+    let stripped = strip_fence(raw.trim());
+    if let Ok(parsed) = serde_json::from_str::<LlmAnalysis>(stripped.trim()) {
+        return Some(parsed);
+    }
+    let inner = extract_first_json_object(&stripped)?;
+    serde_json::from_str::<LlmAnalysis>(&inner).ok()
+}
+
+fn strip_fence(s: &str) -> String {
+    let s = s.trim();
+    if !s.starts_with("```") {
+        return s.to_string();
+    }
+    let after_open = s
+        .trim_start_matches("```")
+        .trim_start_matches("json")
+        .trim_start();
+    after_open.trim_end_matches("```").trim().to_string()
+}
+
+fn extract_first_json_object(s: &str) -> Option<String> {
+    let start = s.find('{')?;
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escape = false;
+    for (i, ch) in s[start..].char_indices() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        match ch {
+            '\\' if in_string => escape = true,
+            '"' => in_string = !in_string,
+            '{' if !in_string => depth += 1,
+            '}' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(s[start..start + i + 1].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Best-effort fallback when the LLM reports `not_found` without
 /// proposing alternatives. Pulls candidate tokens from the reason and
 /// matches them against table names in the cached schema.

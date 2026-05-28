@@ -181,6 +181,46 @@ export interface DatabaseSchema {
   tables: TableSchema[];
 }
 
+/** One slow node flagged by the LLM analyser. */
+export interface Bottleneck {
+  node: string;
+  issue: string;
+  severity: "high" | "medium" | "low" | string;
+}
+
+/** A proposed index along with the DDL to create it. */
+export interface IndexSuggestion {
+  sql: string;
+  rationale: string;
+  table: string;
+  columns: string[];
+}
+
+/** Token accounting for an LLM exchange (shared with [AgentOutput]). */
+export interface AnalyzeUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+/** Structured output of `analyze_query_plan`. The raw plan JSON strings
+ *  are returned verbatim so the UI can render the visual tree without
+ *  re-running EXPLAIN. */
+export interface QueryAnalysis {
+  summary: string;
+  bottlenecks: Bottleneck[];
+  index_suggestions: IndexSuggestion[];
+  optimized_sql: string | null;
+  rewrites: string[];
+  estimated_gain_factor: number | null;
+  original_plan: string;
+  optimized_plan: string | null;
+  original_total_cost: number | null;
+  optimized_total_cost: number | null;
+  original_execution_ms: number | null;
+  usage: AnalyzeUsage;
+}
+
 /** Result of `analyze_statement` — used by the destructive-SQL guard. */
 export interface StatementAnalysis {
   statements: StatementInfo[];

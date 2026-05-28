@@ -6,6 +6,7 @@ import type {
   DatabaseSchema,
   NlHistoryEntry,
   OrderBy,
+  QueryAnalysis,
   QueryResult,
   RowFilter,
   SchemaInfo,
@@ -133,6 +134,13 @@ export const explorerApi = {
    *  it for DML. */
   explainQuery: (sessionId: string, sql: string, analyze: boolean) =>
     invoke<string>("explain_query", { sessionId, sql, analyze }),
+
+  /** LLM-driven query analysis: runs EXPLAIN (ANALYZE for SELECT), then
+   *  asks the model for bottlenecks, index suggestions and a rewritten
+   *  query. EXPLAINs the rewrite (no ANALYZE) to back the comparison
+   *  with real planner numbers. */
+  analyzeQueryPlan: (sessionId: string, sql: string) =>
+    invoke<QueryAnalysis>("analyze_query_plan", { sessionId, sql }),
 
   /** Browse a table's rows with an optional quick-filter, sort and pagination. */
   browseTable: (

@@ -654,6 +654,16 @@ export function TableRecords({ sessionId, table }: TableRecordsProps) {
           sessionId={sessionId}
           sql={explainSql}
           onClose={() => setExplainSql(null)}
+          onUseSql={(s) => {
+            setSqlText(s);
+            setSelectedSql("");
+            setExplainSql(null);
+          }}
+          onRunIndex={(s) => {
+            setSqlText(s);
+            setSelectedSql("");
+            setExplainSql(null);
+          }}
         />
       )}
 
