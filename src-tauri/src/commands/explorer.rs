@@ -366,11 +366,9 @@ pub async fn run_query(
     let order_clause = order_by
         .as_ref()
         .map(|o| {
-            format!(
-                " ORDER BY {ident} {dir}",
-                ident = format!("\"{}\"", o.column.replace('"', "\"\"")),
-                dir = if o.descending { "DESC" } else { "ASC" },
-            )
+            let escaped = o.column.replace('"', "\"\"");
+            let dir = if o.descending { "DESC" } else { "ASC" };
+            format!(" ORDER BY \"{escaped}\" {dir}")
         })
         .unwrap_or_default();
 
