@@ -805,12 +805,12 @@ pub async fn analyze_query_plan<R: tauri::Runtime>(
         _ => (None, None),
     };
 
-    let estimated_gain_factor = llm.estimated_gain_factor.or_else(|| {
-        match (original_total_cost, optimized_total_cost) {
-            (Some(o), Some(n)) if n > 0.0 => Some(o / n),
-            _ => None,
-        }
-    });
+    let estimated_gain_factor =
+        llm.estimated_gain_factor
+            .or_else(|| match (original_total_cost, optimized_total_cost) {
+                (Some(o), Some(n)) if n > 0.0 => Some(o / n),
+                _ => None,
+            });
 
     Ok(QueryAnalysis {
         summary: llm.summary,
@@ -866,7 +866,9 @@ fn build_analysis_prompt(
     if analyze_ran {
         out.push_str("Plan was produced with EXPLAIN ANALYZE — `Actual Time` and `Actual Rows` reflect a real run.\n");
     } else {
-        out.push_str("Plan was produced with EXPLAIN (no ANALYZE) — only planner estimates are available.\n");
+        out.push_str(
+            "Plan was produced with EXPLAIN (no ANALYZE) — only planner estimates are available.\n",
+        );
     }
     if let Some(c) = total_cost {
         out.push_str(&format!("Planner total cost: {c:.2}\n"));
