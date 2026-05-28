@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ChevronRight,
+  Download,
   Eraser,
   Eye,
   Filter,
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { explorerApi } from "./api";
 import { CreateSchemaDialog } from "./CreateSchemaDialog";
 import { DestructiveConfirmDialog } from "./DestructiveConfirmDialog";
+import { ExportDialog } from "./ExportDialog";
 import { TableEditorDialog } from "./TableEditorDialog";
 import type {
   SchemaInfo,
@@ -100,6 +102,10 @@ export function SchemaTree({
   const [schemaMenu, setSchemaMenu] = useState<SchemaMenu | null>(null);
   const [createForSchema, setCreateForSchema] = useState<string | null>(null);
   const [createSchemaOpen, setCreateSchemaOpen] = useState(false);
+  const [exportTarget, setExportTarget] = useState<{
+    schema: string;
+    table: string;
+  } | null>(null);
   const [pending, setPending] = useState<PendingOp | null>(null);
   const [running, setRunning] = useState(false);
 
@@ -442,6 +448,16 @@ export function SchemaTree({
       {tableMenu && (
         <ContextMenu x={tableMenu.x} y={tableMenu.y}>
           <ContextItem
+            icon={<Download className="size-4" />}
+            onClick={() => {
+              const { schema, table } = tableMenu;
+              setTableMenu(null);
+              setExportTarget({ schema, table });
+            }}
+          >
+            {t("explorer.export.menuLabel")}
+          </ContextItem>
+          <ContextItem
             icon={<Eraser className="size-4" />}
             onClick={() => {
               const { schema, table } = tableMenu;
@@ -490,6 +506,15 @@ export function SchemaTree({
           sessionId={sessionId}
           onApplied={() => void loadSchemas()}
           onClose={() => setCreateSchemaOpen(false)}
+        />
+      )}
+
+      {exportTarget && (
+        <ExportDialog
+          sessionId={sessionId}
+          schema={exportTarget.schema}
+          table={exportTarget.table}
+          onClose={() => setExportTarget(null)}
         />
       )}
 

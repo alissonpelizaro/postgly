@@ -13,6 +13,7 @@ pub mod vault;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state::AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
@@ -39,11 +40,14 @@ pub fn run() {
             commands::settings::test_llm_config,
             commands::settings::save_safety_config,
             commands::explorer::analyze_statement,
+            commands::explorer::explain_query,
+            commands::explorer::export_table,
             commands::llm::generate_sql,
             commands::llm::nl_query_history,
             commands::llm::agent_chat_send,
             commands::llm::agent_execute_pending_mutation,
             commands::llm::agent_generate_title,
+            commands::llm::analyze_query_plan,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

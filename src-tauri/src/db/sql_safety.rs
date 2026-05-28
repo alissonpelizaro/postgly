@@ -62,6 +62,10 @@ pub struct StatementInfo {
     /// `true` when an `UPDATE`/`DELETE` has any `WHERE` clause. Always
     /// `false` for non-`UPDATE`/`DELETE` statements.
     pub has_where: bool,
+    /// `true` when the statement contains a `LIMIT` keyword anywhere
+    /// outside of literals. Used by `run_query` to decide whether to
+    /// inject a safety cap on free-form `SELECT`s.
+    pub has_limit: bool,
     /// First ~140 chars of the statement, with whitespace collapsed —
     /// safe to render in a confirmation dialog.
     pub preview: String,
@@ -97,9 +101,12 @@ pub fn analyze(sql: &str) -> SqlAnalysis {
             let kind = StatementKind::from_keyword(first);
             let has_where = matches!(kind, StatementKind::Update | StatementKind::Delete)
                 && contains_keyword(&lower, "where");
+            let has_limit =
+                matches!(kind, StatementKind::Select) && contains_keyword(&lower, "limit");
             Some(StatementInfo {
                 kind,
                 has_where,
+                has_limit,
                 preview: preview(trimmed),
             })
         })

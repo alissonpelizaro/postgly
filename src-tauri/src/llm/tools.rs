@@ -598,6 +598,15 @@ mod tests {
         async fn disconnect(&mut self) -> AppResult<()> {
             Ok(())
         }
+        async fn copy_table_to_file(
+            &self,
+            _schema: &str,
+            _table: &str,
+            _format: crate::db::driver::ExportFormat,
+            _path: &std::path::Path,
+        ) -> AppResult<u64> {
+            Ok(0)
+        }
     }
 
     fn tools() -> SessionTools {
@@ -714,6 +723,15 @@ mod tests {
         }
         async fn disconnect(&mut self) -> AppResult<()> {
             Ok(())
+        }
+        async fn copy_table_to_file(
+            &self,
+            _schema: &str,
+            _table: &str,
+            _format: crate::db::driver::ExportFormat,
+            _path: &std::path::Path,
+        ) -> AppResult<u64> {
+            Ok(0)
         }
     }
 

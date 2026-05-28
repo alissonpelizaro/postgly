@@ -45,6 +45,17 @@ export interface QueryResult {
   rows: (string | null)[][];
   /** Rows returned (SELECT) or affected (INSERT/UPDATE/DELETE). */
   rows_affected: number;
+  /** `true` when `run_query` wrapped a free-form `SELECT` to enforce
+   *  the safety cap. Drives the pager and header-sort affordances in
+   *  SQL mode. */
+  paginated?: boolean;
+  /** `true` when there is at least one more row on the server beyond
+   *  the current page — drives the "next page" button. */
+  has_more?: boolean;
+  /** Offset that produced this page (0 for the first page). */
+  offset?: number;
+  /** Effective page size that was applied (e.g. 1000). */
+  row_cap?: number | null;
 }
 
 /** A single column value: used to address a row (primary key) or to
@@ -133,6 +144,81 @@ export interface StatementInfo {
   has_where: boolean;
   /** First ~140 chars of the statement, whitespace-collapsed. */
   preview: string;
+}
+
+/** A single column within a [TableSchema] from the introspection cache. */
+export interface ColumnSchema {
+  name: string;
+  data_type: string;
+  nullable: boolean;
+  default: string | null;
+  is_primary_key: boolean;
+  comment: string | null;
+}
+
+/** A foreign-key constraint on a [TableSchema]. */
+export interface ForeignKeySchema {
+  name: string;
+  columns: string[];
+  ref_schema: string;
+  ref_table: string;
+  ref_columns: string[];
+}
+
+/** A single table/view from the full schema introspection. */
+export interface TableSchema {
+  schema: string;
+  name: string;
+  kind: "table" | "view" | "materializedview";
+  comment: string | null;
+  columns: ColumnSchema[];
+  primary_key: string[];
+  foreign_keys: ForeignKeySchema[];
+}
+
+/** Full introspected schema for an open connection (user schemas only). */
+export interface DatabaseSchema {
+  tables: TableSchema[];
+}
+
+/** One slow node flagged by the LLM analyser. */
+export interface Bottleneck {
+  node: string;
+  issue: string;
+  severity: "high" | "medium" | "low" | string;
+}
+
+/** A proposed index along with the DDL to create it. */
+export interface IndexSuggestion {
+  sql: string;
+  rationale: string;
+  table: string;
+  columns: string[];
+}
+
+/** Token accounting for an LLM exchange (shared with [AgentOutput]). */
+export interface AnalyzeUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+/** Structured output of `analyze_query_plan`. The raw plan JSON strings
+ *  are returned verbatim so the UI can render the visual tree without
+ *  re-running EXPLAIN. */
+export interface QueryAnalysis {
+  summary: string;
+  bottlenecks: Bottleneck[];
+  index_suggestions: IndexSuggestion[];
+  optimized_sql: string | null;
+  rewrites: string[];
+  estimated_gain_factor: number | null;
+  original_plan: string;
+  optimized_plan: string | null;
+  original_total_cost: number | null;
+  optimized_total_cost: number | null;
+  original_execution_ms: number | null;
+  usage: AnalyzeUsage;
 }
 
 /** Result of `analyze_statement` — used by the destructive-SQL guard. */
