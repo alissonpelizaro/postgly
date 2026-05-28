@@ -1019,4 +1019,103 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, AppError::Connection(_)));
     }
+
+    #[tokio::test]
+    async fn explain_query_runs_explain_format_json_and_returns_plan() {
+        let app = app_with_session("s");
+        let plan = explain_query(
+            app.state::<AppState>(),
+            "s".into(),
+            "SELECT 1;".into(),
+            false,
+        )
+        .await
+        .unwrap();
+        assert!(plan.contains("\"Plan\""));
+        let driver = session_for(&app.state::<AppState>(), "s").unwrap();
+        assert!(driver
+            .query_history()
+            .iter()
+            .any(|c| c.contains("execute(EXPLAIN (ANALYZE false")));
+    }
+
+    #[tokio::test]
+    async fn explain_query_passes_analyze_flag_to_postgres() {
+        let app = app_with_session("s");
+        explain_query(
+            app.state::<AppState>(),
+            "s".into(),
+            "SELECT 1".into(),
+            true,
+        )
+        .await
+        .unwrap();
+        let driver = session_for(&app.state::<AppState>(), "s").unwrap();
+        assert!(driver
+            .query_history()
+            .iter()
+            .any(|c| c.contains("ANALYZE true")));
+    }
+
+    #[tokio::test]
+    async fn explain_query_rejects_empty_sql() {
+        let app = app_with_session("s");
+        let err = explain_query(app.state::<AppState>(), "s".into(), "  ;  ".into(), false)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("empty SQL"));
+    }
+
+    #[tokio::test]
+    async fn explain_query_errors_when_session_unknown() {
+        let app = tauri::test::mock_builder()
+            .manage(AppState::default())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let err = explain_query(
+            app.state::<AppState>(),
+            "ghost".into(),
+            "SELECT 1".into(),
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, AppError::Connection(_)));
+    }
+
+    #[tokio::test]
+    async fn export_table_forwards_to_driver_and_reports_bytes() {
+        let app = app_with_session("s");
+        let result = export_table(
+            app.state::<AppState>(),
+            "s".into(),
+            "public".into(),
+            "users".into(),
+            ExportFormat::Csv,
+            "/tmp/postgly-test-export.csv".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.bytes_written, 0);
+        assert_eq!(result.path, "/tmp/postgly-test-export.csv");
+    }
+
+    #[tokio::test]
+    async fn export_table_errors_when_session_unknown() {
+        let app = tauri::test::mock_builder()
+            .manage(AppState::default())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let err = export_table(
+            app.state::<AppState>(),
+            "ghost".into(),
+            "public".into(),
+            "users".into(),
+            ExportFormat::JsonLines,
+            "/tmp/x".into(),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, AppError::Connection(_)));
+    }
 }

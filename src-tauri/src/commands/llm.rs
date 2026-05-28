@@ -1912,4 +1912,359 @@ mod tests {
         .unwrap_err();
         assert!(err.to_string().contains("empty title"));
     }
+
+    #[test]
+    fn strip_fence_unwraps_json_code_fence() {
+        assert_eq!(strip_fence("```json\n{\"a\":1}\n```"), "{\"a\":1}");
+        assert_eq!(strip_fence("```\n{\"a\":1}\n```"), "{\"a\":1}");
+        assert_eq!(strip_fence("{\"a\":1}"), "{\"a\":1}");
+    }
+
+    #[test]
+    fn extract_first_json_object_handles_escapes_and_preamble() {
+        let s = "preamble {\"key\":\"a \\\"b\\\" c\",\"n\":{\"x\":1}} trailing";
+        let out = extract_first_json_object(s).unwrap();
+        assert!(out.starts_with('{') && out.ends_with('}'));
+        assert!(serde_json::from_str::<serde_json::Value>(&out).is_ok());
+        assert!(extract_first_json_object("no braces here").is_none());
+    }
+
+    #[test]
+    fn parse_analysis_json_accepts_fenced_and_raw_and_preambled() {
+        let raw = r#"{"summary":"ok","bottlenecks":[],"index_suggestions":[],"optimized_sql":null,"rewrites":[],"estimated_gain_factor":null}"#;
+        assert!(parse_analysis_json(raw).is_some());
+        let fenced = format!("```json\n{raw}\n```");
+        assert!(parse_analysis_json(&fenced).is_some());
+        let noisy = format!("Here you go:\n{raw}\nThanks.");
+        assert!(parse_analysis_json(&noisy).is_some());
+        assert!(parse_analysis_json("not json at all").is_none());
+    }
+
+    #[test]
+    fn plan_summary_extracts_cost_and_time_when_present() {
+        let plan = r#"[{"Plan":{"Total Cost":12.34,"Plan Rows":10},"Execution Time":5.5}]"#;
+        let (cost, ms) = plan_summary(plan);
+        assert_eq!(cost, Some(12.34));
+        assert_eq!(ms, Some(5.5));
+
+        let bare = r#"[{"Plan":{"Plan Rows":3}}]"#;
+        let (c2, m2) = plan_summary(bare);
+        assert!(c2.is_none());
+        assert!(m2.is_none());
+
+        assert_eq!(plan_summary("oops"), (None, None));
+    }
+
+    #[test]
+    fn collect_referenced_relations_walks_nested_plans() {
+        let plan = r#"[{"Plan":{
+            "Node Type":"Nested Loop",
+            "Plans":[
+              {"Node Type":"Seq Scan","Relation Name":"users","Schema":"public"},
+              {"Node Type":"Index Scan","Relation Name":"orders","Schema":"public",
+               "Plans":[{"Node Type":"Sort","Relation Name":"orders","Schema":"public"}]}
+            ]}}]"#;
+        let refs = collect_referenced_relations(plan);
+        assert_eq!(refs.len(), 2);
+        assert!(refs.contains(&(Some("public".into()), "orders".into())));
+        assert!(refs.contains(&(Some("public".into()), "users".into())));
+
+        // Unparseable plan returns empty.
+        assert!(collect_referenced_relations("not json").is_empty());
+    }
+
+    #[test]
+    fn format_schema_for_tables_filters_to_referenced_and_writes_metadata() {
+        let schema = DatabaseSchema {
+            tables: vec![
+                TableSchema {
+                    schema: "public".into(),
+                    name: "users".into(),
+                    kind: RelationKind::Table,
+                    comment: None,
+                    columns: vec![
+                        ColumnSchema {
+                            name: "id".into(),
+                            data_type: "int4".into(),
+                            nullable: false,
+                            default: None,
+                            is_primary_key: true,
+                            comment: Some("primary key".into()),
+                        },
+                        ColumnSchema {
+                            name: "name".into(),
+                            data_type: "text".into(),
+                            nullable: true,
+                            default: None,
+                            is_primary_key: false,
+                            comment: None,
+                        },
+                    ],
+                    primary_key: vec!["id".into()],
+                    foreign_keys: vec![crate::db::driver::ForeignKeySchema {
+                        name: "fk".into(),
+                        columns: vec!["org_id".into()],
+                        ref_schema: "public".into(),
+                        ref_table: "orgs".into(),
+                        ref_columns: vec!["id".into()],
+                    }],
+                },
+                TableSchema {
+                    schema: "public".into(),
+                    name: "orders".into(),
+                    kind: RelationKind::Table,
+                    comment: None,
+                    columns: vec![],
+                    primary_key: vec![],
+                    foreign_keys: vec![],
+                },
+            ],
+        };
+        let referenced = vec![(Some("public".into()), "users".into())];
+        let out = format_schema_for_tables(&schema, &referenced);
+        assert!(out.contains("public.users"));
+        assert!(out.contains("PK(id)"));
+        assert!(out.contains("id int4 NOT NULL"));
+        assert!(out.contains("-- primary key"));
+        assert!(out.contains("FK(org_id) -> public.orgs(id)"));
+        // `orders` is not referenced → must be filtered out.
+        assert!(!out.contains("public.orders"));
+
+        // Empty `referenced` keeps every table.
+        let all = format_schema_for_tables(&schema, &[]);
+        assert!(all.contains("public.users") && all.contains("public.orders"));
+
+        // Reference that matches nothing → marker line.
+        let none = format_schema_for_tables(
+            &DatabaseSchema { tables: vec![] },
+            &[(None, "ghost".into())],
+        );
+        assert!(none.contains("no matching tables"));
+    }
+
+    #[test]
+    fn build_analysis_prompt_includes_plan_sql_and_context_lines() {
+        let prompt = build_analysis_prompt(
+            "SELECT 1",
+            "[{\"Plan\":{}}]",
+            "- public.users\n",
+            Some(12.5),
+            Some(99.9),
+            true,
+        );
+        assert!(prompt.contains("Original SQL:"));
+        assert!(prompt.contains("SELECT 1"));
+        assert!(prompt.contains("EXPLAIN ANALYZE"));
+        assert!(prompt.contains("Planner total cost: 99.90"));
+        assert!(prompt.contains("Measured execution time: 12.50 ms"));
+        assert!(prompt.contains("public.users"));
+
+        let no_analyze = build_analysis_prompt("SELECT 1", "[]", "", None, None, false);
+        assert!(no_analyze.contains("no ANALYZE"));
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn analyze_query_plan_rejects_empty_sql() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_with_session("s");
+        let err = analyze_query_plan(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            "s".into(),
+            "   ;  ".into(),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("empty SQL"));
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn analyze_query_plan_errors_when_llm_not_configured() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_with_session("s");
+        let err = analyze_query_plan(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            "s".into(),
+            "SELECT 1".into(),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("LLM is not configured"));
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn analyze_query_plan_errors_when_api_key_missing() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_with_session("s");
+        let server = MockServer::start().await;
+        write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "sk").await;
+        settings::set_secret(app.handle(), LLM_API_KEY_ACCOUNT, "").unwrap();
+        let err = analyze_query_plan(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            "s".into(),
+            "SELECT 1".into(),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("API key is not configured"));
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn analyze_query_plan_errors_when_session_unknown() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_with_session("s");
+        let server = MockServer::start().await;
+        write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "sk").await;
+        let err = analyze_query_plan(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            "ghost".into(),
+            "SELECT 1".into(),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("session not found"));
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn analyze_query_plan_returns_structured_findings_and_explains_rewrite() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_with_session("s");
+        let server = MockServer::start().await;
+        write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "sk").await;
+
+        let llm_body = r#"{
+            "summary":"Seq scan on users hurts.",
+            "bottlenecks":[{"node":"Seq Scan on public.users","issue":"missing index","severity":"high"}],
+            "index_suggestions":[{
+                "sql":"CREATE INDEX CONCURRENTLY ON public.users(email)",
+                "rationale":"WHERE clause on email",
+                "table":"public.users",
+                "columns":["email"]
+            }],
+            "optimized_sql":"SELECT id FROM public.users WHERE email = 'x'",
+            "rewrites":["narrow projection to id"],
+            "estimated_gain_factor":4.0
+        }"#;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": {"role": "assistant", "content": llm_body},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 80, "total_tokens": 130}
+            })))
+            .mount(&server)
+            .await;
+
+        let out = analyze_query_plan(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            "s".into(),
+            "SELECT * FROM public.users".into(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(out.summary, "Seq scan on users hurts.");
+        assert_eq!(out.bottlenecks.len(), 1);
+        assert_eq!(out.bottlenecks[0].severity, "high");
+        assert_eq!(out.index_suggestions.len(), 1);
+        assert_eq!(out.index_suggestions[0].columns, vec!["email"]);
+        assert_eq!(
+            out.optimized_sql.as_deref(),
+            Some("SELECT id FROM public.users WHERE email = 'x'")
+        );
+        assert_eq!(out.estimated_gain_factor, Some(4.0));
+        // The FakeDriver returns the same stub plan for EXPLAIN of the
+        // original AND for EXPLAIN of the rewrite, so both fields land.
+        assert!(out.optimized_plan.is_some());
+        assert_eq!(out.usage.total_tokens, 130);
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn analyze_query_plan_falls_back_to_cost_ratio_when_llm_omits_gain() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_with_session("s");
+        let server = MockServer::start().await;
+        write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "sk").await;
+
+        let llm_body = r#"{
+            "summary":"",
+            "bottlenecks":[],
+            "index_suggestions":[],
+            "optimized_sql":"SELECT 1",
+            "rewrites":[],
+            "estimated_gain_factor":null
+        }"#;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": {"role": "assistant", "content": llm_body},
+                    "finish_reason": "stop"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let out = analyze_query_plan(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            "s".into(),
+            "DELETE FROM users WHERE id = 1".into(),
+        )
+        .await
+        .unwrap();
+        // FakeDriver's EXPLAIN stub omits Total Cost, so the cost-ratio
+        // fallback can't compute either — we just verify it stays None
+        // rather than crashing.
+        assert!(out.estimated_gain_factor.is_none());
+        assert!(out.original_total_cost.is_none());
+    }
+
+    #[cfg(feature = "mock-keyring")]
+    #[tokio::test]
+    async fn analyze_query_plan_rejects_non_json_llm_output() {
+        let _sandbox = EnvSandbox::new();
+        settings::reset_mock_keyring();
+        let app = mock_app_with_session("s");
+        let server = MockServer::start().await;
+        write_llm_config(app.handle(), &format!("{}/v1", server.uri()), "sk").await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": {"role": "assistant", "content": "I refuse to JSON."},
+                    "finish_reason": "stop"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let err = analyze_query_plan(
+            app.handle().clone(),
+            app.state::<AppState>(),
+            "s".into(),
+            "SELECT 1".into(),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("parseable JSON"));
+    }
 }
