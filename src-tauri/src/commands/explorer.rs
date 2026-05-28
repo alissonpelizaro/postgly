@@ -1042,14 +1042,9 @@ mod tests {
     #[tokio::test]
     async fn explain_query_passes_analyze_flag_to_postgres() {
         let app = app_with_session("s");
-        explain_query(
-            app.state::<AppState>(),
-            "s".into(),
-            "SELECT 1".into(),
-            true,
-        )
-        .await
-        .unwrap();
+        explain_query(app.state::<AppState>(), "s".into(), "SELECT 1".into(), true)
+            .await
+            .unwrap();
         let driver = session_for(&app.state::<AppState>(), "s").unwrap();
         assert!(driver
             .query_history()
