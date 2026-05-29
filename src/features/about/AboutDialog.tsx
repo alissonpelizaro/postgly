@@ -19,7 +19,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import logoUrl from "@/assets/postgly-logo.png";
+import { logoForColor } from "@/components/logo";
+import { useTheme } from "@/components/theme-provider";
 
 import type { VersionInfo } from "./use-version-check";
 
@@ -86,6 +87,7 @@ interface AboutDialogProps {
  * the download CTA prominently.
  */
 export function AboutDialog({ open, onOpenChange, version }: AboutDialogProps) {
+  const { colorTheme } = useTheme();
   const open_ = (url: string) => {
     void openUrl(url);
   };
@@ -95,7 +97,7 @@ export function AboutDialog({ open, onOpenChange, version }: AboutDialogProps) {
       <DialogContent className="max-w-lg ">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <img src={logoUrl} alt="Postgly" className="size-12" />
+            <img src={logoForColor(colorTheme)} alt="Postgly" className="size-12" />
             <div className="flex flex-col">
               <DialogTitle>Postgly</DialogTitle>
               <DialogDescription>

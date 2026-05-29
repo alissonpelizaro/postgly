@@ -8,7 +8,8 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import logoUrl from "@/assets/postgly-logo.png";
+import { logoForColor } from "@/components/logo";
+import { useTheme } from "@/components/theme-provider";
 import { useI18n } from "@/i18n";
 
 import { connectionsApi } from "./api";
@@ -164,6 +165,7 @@ export function ConnectionsScreen({ onConnect }: ConnectionsScreenProps) {
  */
 function BrandPanel() {
   const { t } = useI18n();
+  const { colorTheme } = useTheme();
   return (
     <aside className="relative flex h-full w-full items-center justify-center overflow-hidden bg-background">
       {/* Faded grid backdrop. */}
@@ -194,7 +196,7 @@ function BrandPanel() {
         </span>
 
         <img
-          src={logoUrl}
+          src={logoForColor(colorTheme)}
           alt="Postgly"
           className="animate-brand-pulse w-48"
         />
