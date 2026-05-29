@@ -675,6 +675,7 @@ impl DatabaseDriver for PostgresDriver {
         schema: &str,
         table: &str,
         format: crate::db::driver::ExportFormat,
+        delimiter: Option<char>,
         path: &Path,
     ) -> AppResult<u64> {
         use crate::db::driver::ExportFormat;
@@ -682,7 +683,13 @@ impl DatabaseDriver for PostgresDriver {
         let table_ref = format!("{}.{}", quote_ident(schema), quote_ident(table));
         let copy_sql = match format {
             ExportFormat::Csv => {
-                format!("COPY {table_ref} TO STDOUT WITH (FORMAT csv, HEADER true)",)
+                // The delimiter is a single-character COPY option; escape any
+                // embedded quote and wrap it in a single-quoted literal.
+                let delim_clause = match delimiter {
+                    Some(c) => format!(", DELIMITER '{}'", c.to_string().replace('\'', "''")),
+                    None => String::new(),
+                };
+                format!("COPY {table_ref} TO STDOUT WITH (FORMAT csv, HEADER true{delim_clause})")
             }
             ExportFormat::JsonLines => {
                 format!("COPY (SELECT row_to_json(__t) FROM {table_ref} AS __t) TO STDOUT",)

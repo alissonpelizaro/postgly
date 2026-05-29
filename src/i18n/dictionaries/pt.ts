@@ -139,6 +139,13 @@ export const pt: Dict = {
       subtitle: "Preferências gerais do aplicativo.",
       language: "Idioma",
       languageDesc: "Aplica-se a todo o app.",
+      exportTitle: "Configurações de exportação",
+      exportSubtitle: "Como os dados são delimitados ao copiar ou exportar.",
+      copySeparator: "Separador ao copiar",
+      copySeparatorDesc:
+        "Entre os valores das colunas ao copiar a linha para a área de transferência.",
+      exportDelimiter: "Delimitador de exportação CSV",
+      exportDelimiterDesc: "Entre as colunas nos arquivos CSV exportados.",
     },
     appearance: {
       title: "Aparência",
@@ -343,6 +350,8 @@ export const pt: Dict = {
     deleteRecord: "Excluir registro",
     deleteRecordDesc: "O registro será removido permanentemente. Esta ação não pode ser desfeita.",
     duplicateRecord: "Criar igual",
+    copyCell: "Copiar valor da célula",
+    copyRow: "Copiar linha",
     sessionHistory: "Histórico da sessão",
     sessionHistoryDesc: "Comandos executados nesta conexão. Clique para reutilizar.",
     noCommandsYet: "Nenhum comando executado ainda.",

@@ -170,6 +170,8 @@ export const explorerApi = {
     table: string,
     format: "csv" | "jsonlines",
     path: string,
+    /** CSV column delimiter; `null` keeps the engine default (comma). */
+    delimiter: string | null = null,
   ) =>
     invoke<{ bytes_written: number; path: string }>("export_table", {
       sessionId,
@@ -177,5 +179,6 @@ export const explorerApi = {
       table,
       format,
       path,
+      delimiter,
     }),
 };

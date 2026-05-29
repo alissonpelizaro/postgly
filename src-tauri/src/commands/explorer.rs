@@ -408,10 +408,20 @@ pub async fn export_table(
     table: String,
     format: ExportFormat,
     path: String,
+    #[allow(unused)] delimiter: Option<String>,
 ) -> AppResult<ExportResult> {
     let session = session_for(&state, &session_id)?;
+    // Accept only a single character; anything else falls back to the
+    // engine default so a stray multi-char value can't break the COPY.
+    let delim = delimiter.and_then(|d| {
+        let mut chars = d.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) => Some(c),
+            _ => None,
+        }
+    });
     let bytes_written = session
-        .copy_table_to_file(&schema, &table, format, std::path::Path::new(&path))
+        .copy_table_to_file(&schema, &table, format, delim, std::path::Path::new(&path))
         .await?;
     Ok(ExportResult {
         bytes_written,
@@ -641,6 +651,7 @@ mod tests {
             _schema: &str,
             _table: &str,
             _format: crate::db::driver::ExportFormat,
+            _delimiter: Option<char>,
             _path: &std::path::Path,
         ) -> AppResult<u64> {
             Ok(0)
@@ -1088,6 +1099,7 @@ mod tests {
             "users".into(),
             ExportFormat::Csv,
             "/tmp/postgly-test-export.csv".into(),
+            Some(";".into()),
         )
         .await
         .unwrap();
@@ -1108,6 +1120,7 @@ mod tests {
             "users".into(),
             ExportFormat::JsonLines,
             "/tmp/x".into(),
+            None,
         )
         .await
         .unwrap_err();

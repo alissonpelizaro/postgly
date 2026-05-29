@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useI18n } from "@/i18n";
+import { getExportDelimiter } from "@/lib/copy-prefs";
 import { cn } from "@/lib/utils";
 
 import { explorerApi } from "./api";
@@ -78,6 +79,8 @@ export function ExportDialog({
         table,
         format,
         path,
+        // The delimiter only applies to CSV; JSON Lines ignores it.
+        format === "csv" ? getExportDelimiter() : null,
       );
       setDone({ path: result.path, bytes: result.bytes_written });
     } catch (e) {
