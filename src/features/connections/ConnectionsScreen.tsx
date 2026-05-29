@@ -36,9 +36,11 @@ export function ConnectionsScreen({ onConnect }: ConnectionsScreenProps) {
 
   const trimmedQuery = query.trim().toLowerCase();
   const filteredConnections = useMemo(() => {
-    if (!trimmedQuery) return connections;
-    return connections.filter((c) =>
-      c.name.toLowerCase().includes(trimmedQuery),
+    const list = trimmedQuery
+      ? connections.filter((c) => c.name.toLowerCase().includes(trimmedQuery))
+      : connections;
+    return [...list].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
     );
   }, [connections, trimmedQuery]);
 
