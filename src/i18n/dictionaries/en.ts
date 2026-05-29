@@ -137,6 +137,13 @@ export const en = {
       subtitle: "App-wide preferences.",
       language: "Language",
       languageDesc: "Applies to the whole app.",
+      exportTitle: "Export settings",
+      exportSubtitle: "How data is delimited when copied or exported.",
+      copySeparator: "Clipboard separator",
+      copySeparatorDesc:
+        "Between column values when copying a whole row to the clipboard.",
+      exportDelimiter: "CSV export delimiter",
+      exportDelimiterDesc: "Between columns in exported CSV files.",
     },
     appearance: {
       title: "Appearance",
@@ -341,6 +348,8 @@ export const en = {
     deleteRecord: "Delete record",
     deleteRecordDesc: "The record will be permanently removed. This action cannot be undone.",
     duplicateRecord: "Create like this",
+    copyCell: "Copy cell value",
+    copyRow: "Copy row",
     sessionHistory: "Session history",
     sessionHistoryDesc: "Commands run on this connection. Click to reuse.",
     noCommandsYet: "No commands run yet.",

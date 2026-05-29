@@ -279,11 +279,15 @@ pub trait DatabaseDriver: Send + Sync {
     /// implementation must avoid materializing the whole result set in
     /// memory — large tables should flow row-by-row from the server to
     /// the file. Returns the number of bytes written.
+    ///
+    /// `delimiter` overrides the CSV column separator; `None` (and any
+    /// non-CSV format) uses the engine default (comma).
     async fn copy_table_to_file(
         &self,
         schema: &str,
         table: &str,
         format: ExportFormat,
+        delimiter: Option<char>,
         path: &std::path::Path,
     ) -> AppResult<u64>;
 }

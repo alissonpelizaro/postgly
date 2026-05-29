@@ -1171,6 +1171,7 @@ mod tests {
             _schema: &str,
             _table: &str,
             _format: crate::db::driver::ExportFormat,
+            _delimiter: Option<char>,
             _path: &std::path::Path,
         ) -> AppResult<u64> {
             Ok(0)

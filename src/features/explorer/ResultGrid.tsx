@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, CheckCircle2, Copy, Trash2 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  CheckCircle2,
+  ClipboardCopy,
+  Copy,
+  Rows3,
+  Trash2,
+} from "lucide-react";
 
 import { useI18n } from "@/i18n";
+import { getColumnSeparator } from "@/lib/copy-prefs";
 import { cn } from "@/lib/utils";
 
 import type { OrderBy, QueryResult } from "./types";
@@ -34,11 +43,13 @@ export function ResultGrid({
   onRowDuplicate,
 }: ResultGridProps) {
   const { t } = useI18n();
-  // Right-click row menu: viewport coords plus the targeted row index.
+  // Right-click row menu: viewport coords, the targeted row, and the
+  // column under the cursor (`null` for the row-number gutter cell).
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
     rowIndex: number;
+    colIndex: number | null;
   } | null>(null);
 
   // Per-column widths. Empty until the user drags a resizer.
@@ -83,6 +94,28 @@ export function ResultGrid({
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  };
+
+  const openMenu = (
+    e: React.MouseEvent,
+    rowIndex: number,
+    colIndex: number | null,
+  ) => {
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, rowIndex, colIndex });
+  };
+
+  const copyText = (text: string) => {
+    void navigator.clipboard?.writeText(text).catch(() => {});
+  };
+
+  // A single cell, or the whole row joined by the user's chosen delimiter.
+  // NULL cells copy as an empty string so the column count stays stable.
+  const copyCell = (rowIndex: number, colIndex: number) => {
+    copyText(result.rows[rowIndex][colIndex] ?? "");
+  };
+  const copyRow = (rowIndex: number) => {
+    copyText(result.rows[rowIndex].map((c) => c ?? "").join(getColumnSeparator()));
   };
 
   if (result.columns.length === 0) {
@@ -154,24 +187,23 @@ export function ResultGrid({
               <tr
                 key={i}
                 onDoubleClick={() => onRowOpen?.(i)}
-                onContextMenu={(e) => {
-                  if (!onRowDelete && !onRowDuplicate) return;
-                  e.preventDefault();
-                  setMenu({ x: e.clientX, y: e.clientY, rowIndex: i });
-                }}
                 className={cn(
                   "hover:bg-accent/40",
                   (onRowOpen || onRowDelete || onRowDuplicate) && "cursor-pointer",
                   menu?.rowIndex === i && "bg-accent/60",
                 )}
               >
-                <td className="border-b border-border/60 px-2 py-1 text-right text-xs text-muted-foreground tabular-nums">
+                <td
+                  onContextMenu={(e) => openMenu(e, i, null)}
+                  className="border-b border-border/60 px-2 py-1 text-right text-xs text-muted-foreground tabular-nums"
+                >
                   {i + 1}
                 </td>
                 {row.map((cell, j) => (
                   <td
                     key={j}
                     title={cell ?? undefined}
+                    onContextMenu={(e) => openMenu(e, i, j)}
                     className="truncate border-b border-l border-border/60 px-3 py-1"
                   >
                     {cell === null ? (
@@ -195,11 +227,38 @@ export function ResultGrid({
         )}
       </div>
 
-      {menu && (onRowDelete || onRowDuplicate) && (
+      {menu && (
         <div
           className="fixed z-50 min-w-44 rounded-md border border-border bg-popover p-1 shadow-md"
           style={{ left: menu.x, top: menu.y }}
         >
+          {menu.colIndex !== null && (
+            <button
+              type="button"
+              onClick={() => {
+                copyCell(menu.rowIndex, menu.colIndex!);
+                setMenu(null);
+              }}
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            >
+              <ClipboardCopy className="size-4" />
+              {t("explorer.copyCell")}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              copyRow(menu.rowIndex);
+              setMenu(null);
+            }}
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          >
+            <Rows3 className="size-4" />
+            {t("explorer.copyRow")}
+          </button>
+          {(onRowDuplicate || onRowDelete) && (
+            <div className="my-1 border-t border-border" />
+          )}
           {onRowDuplicate && (
             <button
               type="button"
