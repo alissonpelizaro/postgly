@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/assets/postgly-logo-named.png" alt="Postgly" width="200" />
+<img src="src/assets/postgly-logo.png" alt="Postgly" width="200" />
 
 **What if you could talk to your PostgreSQL?**
 
