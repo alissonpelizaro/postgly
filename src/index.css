@@ -649,6 +649,84 @@ html.dark[data-color="yellow"] {
     will-change: opacity, transform;
   }
 
+  /* ---------------------------------------------------------------------
+   * CodeMirror autocomplete popup — re-skinned to match the app's popover
+   * surface (rounded card, soft shadow, brand-coloured selection). The
+   * `.cm-tooltip` compound selectors out-specify CodeMirror's injected
+   * defaults without needing !important.
+   * ------------------------------------------------------------------- */
+  .cm-tooltip.cm-tooltip-autocomplete {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--popover);
+    box-shadow:
+      0 10px 30px -10px color-mix(in srgb, var(--foreground) 30%, transparent),
+      0 4px 12px -6px color-mix(in srgb, var(--foreground) 18%, transparent);
+    overflow: hidden;
+    padding: 4px;
+    backdrop-filter: blur(8px);
+  }
+  .cm-tooltip-autocomplete > ul {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", monospace;
+    font-size: 0.8rem;
+    max-height: 18rem;
+  }
+  .cm-tooltip-autocomplete > ul > li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.55rem;
+    border-radius: var(--radius-sm);
+    color: var(--popover-foreground);
+    line-height: 1.4;
+  }
+  .cm-tooltip-autocomplete > ul > li[aria-selected] {
+    background: color-mix(in srgb, var(--primary) 16%, transparent);
+    color: var(--popover-foreground);
+  }
+  .dark .cm-tooltip-autocomplete > ul > li[aria-selected] {
+    background: color-mix(in srgb, var(--primary) 26%, transparent);
+  }
+  /* Matched substring of what the user has typed. */
+  .cm-tooltip-autocomplete .cm-completionMatchedText {
+    color: var(--primary);
+    font-weight: 700;
+    text-decoration: none;
+  }
+  /* Right-aligned type chip (e.g. `character varying`, `jsonb`). */
+  .cm-tooltip-autocomplete .cm-completionDetail {
+    margin-left: auto;
+    padding-left: 0.75rem;
+    color: var(--muted-foreground);
+    font-style: italic;
+    font-size: 0.72rem;
+  }
+  /* Leading kind icon — tint it with the brand colour and give it room. */
+  .cm-tooltip-autocomplete .cm-completionIcon {
+    width: 1rem;
+    margin-right: 0.1rem;
+    opacity: 0.85;
+    color: var(--muted-foreground);
+  }
+  .cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionIcon {
+    color: var(--primary);
+    opacity: 1;
+  }
+  /* Detail/info popover shown beside a highlighted entry. */
+  .cm-tooltip.cm-completionInfo {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow:
+      0 10px 30px -10px color-mix(in srgb, var(--foreground) 30%, transparent);
+    padding: 0.5rem 0.65rem;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    max-width: 22rem;
+  }
+
   /* Soft grid backdrop, faded with a radial mask (mirrors the site hero). */
   .bg-hero-grid {
     background-image:

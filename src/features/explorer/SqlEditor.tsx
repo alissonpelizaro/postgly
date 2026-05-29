@@ -9,6 +9,7 @@ import type { Completion } from "@codemirror/autocomplete";
 
 import { useTheme } from "@/components/theme-provider";
 
+import { normalizePgType } from "./pgTypes";
 import type { DatabaseSchema } from "./types";
 
 interface SqlEditorProps {
@@ -34,7 +35,7 @@ function buildNamespace(schema: DatabaseSchema): SQLNamespace {
     const cols: Completion[] = t.columns.map((c) => ({
       label: c.name,
       type: c.is_primary_key ? "constant" : "property",
-      detail: c.data_type,
+      detail: normalizePgType(c.data_type),
       info: c.comment ?? undefined,
       boost: c.is_primary_key ? 1 : 0,
     }));

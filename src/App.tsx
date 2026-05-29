@@ -147,57 +147,49 @@ function App() {
       />
 
       <div className="min-h-0 flex-1">
-        {chatOpen ? (
-          <ResizablePanelGroup direction="horizontal" className="h-full">
-            <ResizablePanel defaultSize={70} minSize={40}>
-              <MainViews
-                activeId={activeId}
-                tabs={tabs}
-                preSettingsId={preSettingsId}
-                openTab={openTab}
-                closeTab={closeTab}
-                onTabSessionChange={(tabId, sessionId) =>
-                  setSessionByTab((prev) => ({ ...prev, [tabId]: sessionId }))
-                }
-                onCloseSettings={() => {
-                  const target =
-                    preSettingsId !== null &&
-                    tabs.some((t) => t.id === preSettingsId)
-                      ? preSettingsId
-                      : null;
-                  setActiveId(target);
-                  setPreSettingsId(null);
-                  refreshLlmConfigured();
-                }}
-              />
-            </ResizablePanel>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
-              <AgentChatPanel chat={chat} onClose={closeChat} />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        ) : (
-          <MainViews
-            activeId={activeId}
-            tabs={tabs}
-            preSettingsId={preSettingsId}
-            openTab={openTab}
-            closeTab={closeTab}
-            onTabSessionChange={(tabId, sessionId) =>
-              setSessionByTab((prev) => ({ ...prev, [tabId]: sessionId }))
-            }
-            onCloseSettings={() => {
-              const target =
-                preSettingsId !== null &&
-                tabs.some((t) => t.id === preSettingsId)
-                  ? preSettingsId
-                  : null;
-              setActiveId(target);
-              setPreSettingsId(null);
-              refreshLlmConfigured();
-            }}
-          />
-        )}
+        {/* A single, stable component tree across the chat toggle: the main
+         * views always live in the same panel, and only the agent panel is
+         * added/removed. Swapping the whole tree (e.g. wrapping in the panel
+         * group only when open) would remount MainViews and reset every
+         * ExplorerScreen's state — closing the open table. */}
+        <ResizablePanelGroup direction="horizontal" className="h-full">
+          <ResizablePanel id="main" order={1} defaultSize={70} minSize={40}>
+            <MainViews
+              activeId={activeId}
+              tabs={tabs}
+              preSettingsId={preSettingsId}
+              openTab={openTab}
+              closeTab={closeTab}
+              onTabSessionChange={(tabId, sessionId) =>
+                setSessionByTab((prev) => ({ ...prev, [tabId]: sessionId }))
+              }
+              onCloseSettings={() => {
+                const target =
+                  preSettingsId !== null &&
+                  tabs.some((t) => t.id === preSettingsId)
+                    ? preSettingsId
+                    : null;
+                setActiveId(target);
+                setPreSettingsId(null);
+                refreshLlmConfigured();
+              }}
+            />
+          </ResizablePanel>
+          {chatOpen && (
+            <>
+              <ResizableHandle withHandle />
+              <ResizablePanel
+                id="agent"
+                order={2}
+                defaultSize={30}
+                minSize={20}
+                maxSize={50}
+              >
+                <AgentChatPanel chat={chat} onClose={closeChat} />
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
       </div>
     </div>
   );
