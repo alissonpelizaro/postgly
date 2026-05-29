@@ -90,6 +90,10 @@ jobs:
   # assets are deleted so the release page only shows clean names.
   rename-stable-names:
     needs: release
+    # Run even if a build leg fails (e.g. a flaky upload). The map is
+    # idempotent and only renames assets that actually made it onto the
+    # release, so a partial upload still gets clean filenames.
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
