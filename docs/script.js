@@ -581,4 +581,56 @@
       if (e.key === "Escape" && lightbox.classList.contains("is-open")) close();
     });
   }
+
+  // Copy-to-clipboard buttons on install command blocks (.dl-cmd).
+  const COPY_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const CHECK_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+  document.querySelectorAll(".dl-cmd").forEach((block) => {
+    const code = block.querySelector("code");
+    if (!code) return;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "dl-cmd-copy";
+    btn.setAttribute("aria-label", "Copy command");
+    btn.title = "Copy";
+    btn.innerHTML = COPY_ICON;
+    block.classList.add("has-copy");
+
+    // Wrap the (scrollable) command block so the button anchors to a
+    // non-scrolling parent — otherwise it drifts with horizontal scroll.
+    const wrap = document.createElement("div");
+    wrap.className = "dl-cmd-wrap";
+    block.parentNode.insertBefore(wrap, block);
+    wrap.appendChild(block);
+    wrap.appendChild(btn);
+
+    let resetTimer;
+    btn.addEventListener("click", async () => {
+      const text = code.textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        // Fallback for non-secure contexts.
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      btn.innerHTML = CHECK_ICON;
+      btn.classList.add("is-copied");
+      clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => {
+        btn.innerHTML = COPY_ICON;
+        btn.classList.remove("is-copied");
+      }, 1600);
+    });
+  });
 })();

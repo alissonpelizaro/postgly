@@ -93,7 +93,8 @@ body {
   -ms-user-select: none;
   -webkit-touch-callout: none;
 }
-input, textarea, [contenteditable="true"] {
+input, textarea, [contenteditable="true"],
+pre, code, kbd {
   user-select: text;
   -webkit-user-select: text;
 }
@@ -690,6 +691,31 @@ html[data-theme="light"] .dl pre {
   font-size: 12.5px;
   white-space: pre;
 }
+.dl-cmd-wrap { position: relative; }
+.dl-cmd.has-copy { padding-right: 44px; }
+.dl-cmd-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-alt);
+  color: var(--fg-muted);
+  opacity: 0;
+  transition: opacity .15s ease, color .15s ease, background .15s ease, border-color .15s ease;
+}
+.dl-cmd-wrap:hover .dl-cmd-copy,
+.dl-cmd-copy:focus-visible,
+.dl-cmd-copy.is-copied { opacity: 1; }
+.dl-cmd-copy svg { width: 15px; height: 15px; }
+.dl-cmd-copy:hover { color: var(--fg); border-color: var(--accent); }
+.dl-cmd-copy.is-copied { color: var(--accent); border-color: var(--accent); }
 .dl-notes p { margin: 10px 0 4px; }
 .dl-notes ol li { margin-bottom: 6px; }
 .dl-foot { text-align: center; color: var(--fg-muted); margin-top: 24px; font-size: 14.5px; }
