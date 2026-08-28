@@ -101,16 +101,19 @@ ANALYZE;
 -- no CREATEROLE, so the credentials in the review notes can't reach past
 -- the demo data.
 
+-- The attributes go on CREATE, not a later ALTER: on managed Postgres the
+-- admin role is not a superuser, and altering the SUPERUSER attribute at all
+-- — even to turn it off — is superuser-only. They are the defaults anyway;
+-- naming them keeps the intent readable.
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'appreview') THEN
-    CREATE ROLE appreview LOGIN;
+    CREATE ROLE appreview LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
   END IF;
 END
 $$;
 
 ALTER ROLE appreview WITH PASSWORD :reviewer_password;
-ALTER ROLE appreview NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 
 -- CONNECT usually comes from PUBLIC, but some managed providers revoke it.
 -- GRANT ... ON DATABASE needs a literal name, hence the dynamic statement.
