@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Mandatory for every Mac App Store submission. -->
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+
+  <!-- Outbound TCP: Postgres connections and the OpenAI-compatible LLM API. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+
+  <!-- The export/save dialog writes wherever the user picks. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+
+  <!-- Must match the Mac App Store provisioning profile. TEAM_ID is
+       substituted by scripts/build-mas.sh at signing time. -->
+  <key>com.apple.application-identifier</key>
+  <string>__TEAM_ID__.com.alissonpelizaro.postgly</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>__TEAM_ID__</string>
+</dict>
+</plist>

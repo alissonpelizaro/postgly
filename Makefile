@@ -56,6 +56,10 @@ build: ## Build the production Tauri bundle for the current platform.
 typecheck: ## Type-check the TypeScript frontend.
 	npm run typecheck
 
+.PHONY: mas
+mas: ## Build a signed Mac App Store .pkg (needs TEAM_ID and MAS_PROFILE).
+	./scripts/build-mas.sh
+
 ##@ Backend quality
 
 .PHONY: fmt

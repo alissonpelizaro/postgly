@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark light" />
+
+  <title>Privacy Policy — Postgly</title>
+  <meta name="description" content="Postgly's privacy policy. Postgly collects no personal data: it has no accounts, no telemetry and no cloud sync, and it stores everything locally on your device." />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#0a0a0f" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+
+  <link rel="canonical" href="https://alissonpelizaro.github.io/postgly/privacy.html" />
+  <link rel="icon" type="image/png" href="postgly-logo.png" />
+  <link rel="apple-touch-icon" href="postgly-logo.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <header class="site-header" role="banner">
+    <div class="container header-row">
+      <a href="./" class="brand" aria-label="Postgly home">
+        <img src="postgly-logo.png" alt="" width="36" height="36" />
+        <span>Postgly</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="./#features">Features</a>
+        <a href="./#assistant">AI assistant</a>
+        <a href="./#download">Download</a>
+        <a href="https://github.com/alissonpelizaro/postgly" target="_blank" rel="noopener">GitHub ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="section">
+      <div class="container" style="max-width:780px">
+
+        <h1 style="font-size:38px;line-height:1.15;margin:0 0 10px">Privacy Policy</h1>
+        <p style="color:var(--fg-muted);margin:0 0 40px">Last updated: 28 August 2026</p>
+
+        <p><strong>Postgly does not collect any personal data.</strong> There are no
+        user accounts, no analytics, no telemetry, no advertising identifiers and
+        no cloud sync. Nothing you do in the app is reported back to us, and we
+        operate no servers that receive your data.</p>
+
+        <h2 style="margin:40px 0 12px">What Postgly stores, and where</h2>
+        <p>Everything Postgly saves stays on your device, inside the app's own
+        storage area:</p>
+        <ul>
+          <li><strong>Connection details</strong> — the name, host, port, database
+          and username of the servers you add.</li>
+          <li><strong>Connection passwords</strong> — kept in an encrypted local
+          vault file, never in plain text.</li>
+          <li><strong>Preferences</strong> — such as theme and language, plus the AI
+          settings described below.</li>
+        </ul>
+        <p>You can erase all of it at any time by deleting the connections inside
+        the app or by removing the application.</p>
+
+        <h2 style="margin:40px 0 12px">Network connections the app makes</h2>
+        <p>Postgly only talks to servers you choose:</p>
+        <ul>
+          <li><strong>Your databases.</strong> Postgly connects directly from your
+          device to the PostgreSQL servers you configure. Your queries and their
+          results travel between your device and those servers only.</li>
+          <li><strong>Your AI provider, if you enable it.</strong> The AI assistant
+          is optional and inactive until you supply an endpoint and API key. Once
+          configured, the questions you ask it — along with the database schema
+          information needed to answer them, such as table and column names — are
+          sent to that endpoint so it can generate SQL. The endpoint is whichever
+          OpenAI-compatible service you point it at, including a model running on
+          your own machine. That provider's own privacy policy governs what it
+          does with the request. We never receive a copy.</li>
+        </ul>
+        <p>Postgly makes no other network requests.</p>
+
+        <h2 style="margin:40px 0 12px">Sharing</h2>
+        <p>We do not sell, rent or share your data, because we do not have it.</p>
+
+        <h2 style="margin:40px 0 12px">Children</h2>
+        <p>Postgly is a developer tool and is not directed at children. It collects
+        no data from anyone, including children.</p>
+
+        <h2 style="margin:40px 0 12px">Changes</h2>
+        <p>If this policy changes, the updated version will be published on this
+        page with a new date above.</p>
+
+        <h2 style="margin:40px 0 12px">Contact</h2>
+        <p>Questions about this policy can be raised at
+        <a href="https://github.com/alissonpelizaro/postgly/issues" target="_blank" rel="noopener">github.com/alissonpelizaro/postgly/issues</a>.</p>
+
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-row">
+      <div class="brand">
+        <img src="postgly-logo.png" alt="" width="24" height="24" />
+        <span>Postgly</span>
+      </div>
+      <nav class="foot-nav" aria-label="Footer">
+        <a href="./">Home</a>
+        <a href="https://github.com/alissonpelizaro/postgly" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/alissonpelizaro/postgly/issues" target="_blank" rel="noopener">Issues</a>
+      </nav>
+      <p class="foot-copy">© <span id="year"></span> Postgly · Made by <a href="https://github.com/alissonpelizaro" target="_blank" rel="noopener">Alisson Pelizaro</a></p>
+    </div>
+  </footer>
+
+  <script src="script.js" defer></script>
+</body>
+</html>

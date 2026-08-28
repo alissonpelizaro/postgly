@@ -92,7 +92,6 @@ export const en = {
     emptyTitle: "No connections yet",
     emptySubtitle: "Create your first connection to start exploring a database.",
     createFirst: "Create first connection",
-    brandBadge: "PostgreSQL client · local-first",
     brandTitlePrefix: "Talk ",
     brandTitleSuffix: "to your databases",
     brandSubLine1Prefix: "Fast, lightweight, local with ",

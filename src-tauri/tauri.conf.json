@@ -32,6 +32,13 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "DeveloperTool",
+    "copyright": "Copyright © 2026 Alisson Pelizaro. MIT licensed.",
+    "shortDescription": "Modern multi-database management app",
+    "longDescription": "Postgly is a desktop client for browsing, querying and managing Postgres databases, with an optional AI assistant powered by any OpenAI-compatible endpoint.",
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
   }
 }
