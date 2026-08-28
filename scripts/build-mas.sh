@@ -55,7 +55,8 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
 # `--bundles app` skips the DMG; the App Store only ever wants the .app.
 # Signing is deliberately left off here so the manual pass below is the
 # only thing that touches the signature.
-APPLE_SIGNING_IDENTITY="" npm run tauri build -- --bundles app --target "$TARGET"
+env -u APPLE_SIGNING_IDENTITY -u APPLE_CERTIFICATE \
+  npm run tauri build -- --bundles app --target "$TARGET"
 
 [[ -d "$APP" ]] || die "expected bundle not found at $APP"
 
