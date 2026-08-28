@@ -94,7 +94,6 @@ export const pt: Dict = {
     emptyTitle: "Nenhuma conexão ainda",
     emptySubtitle: "Crie sua primeira conexão para começar a explorar um banco.",
     createFirst: "Criar primeira conexão",
-    brandBadge: "Cliente PostgreSQL · local-first",
     brandTitlePrefix: "Converse ",
     brandTitleSuffix: "com seus bancos de dados",
     brandSubLine1Prefix: "Rápido, leve, local e com ",

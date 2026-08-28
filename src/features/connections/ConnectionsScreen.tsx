@@ -192,11 +192,6 @@ function BrandPanel() {
       />
 
       <div className="relative z-10 flex flex-col items-center justify-center gap-7 px-10 text-center">
-        <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-          <span className="inline-block size-1.5 rounded-full bg-primary shadow-[0_0_0_4px_color-mix(in_srgb,var(--primary)_25%,transparent)]" />
-          {t("connections.brandBadge")}
-        </span>
-
         <img
           src={logoForColor(colorTheme)}
           alt="Postgly"

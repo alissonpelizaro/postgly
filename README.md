@@ -88,6 +88,14 @@ chmod +x Postgly-linux-x86_64.AppImage && ./Postgly-linux-x86_64.AppImage
 sudo dpkg -i Postgly-linux-amd64.deb && sudo apt-get install -f
 ```
 
+### Mac App Store build
+
+The App Store build runs in Apple's sandbox, so it keeps its settings inside
+its own container rather than in `~/Library/Application Support/`. It starts
+with an empty connection list even if the `.dmg` build is already installed —
+saved connections are not carried over and have to be added again. The two
+builds are independent and can coexist.
+
 ---
 
 ## ⚡ Quickstart
