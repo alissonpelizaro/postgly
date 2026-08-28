@@ -21,15 +21,20 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+die() { echo "error: $*" >&2; exit 1; }
+
 BUNDLE_ID="$(node -p "require('./src-tauri/tauri.conf.json').identifier")"
 PRODUCT="$(node -p "require('./src-tauri/tauri.conf.json').productName")"
-VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+# The committed config version is a placeholder — the release workflow
+# rewrites it from the pushed tag, so the checked-in value trails the
+# published releases. Mirror that here or the App Store build would carry a
+# version far behind the one users already have. Override with VERSION=…
+VERSION="${VERSION:-$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//')}"
+[[ -n "$VERSION" ]] || die "no version: pass VERSION=x.y.z or tag a release"
 TARGET="universal-apple-darwin"
 APP="src-tauri/target/$TARGET/release/bundle/macos/$PRODUCT.app"
 OUT="src-tauri/target/mas"
 PKG="$OUT/$PRODUCT-$VERSION.pkg"
-
-die() { echo "error: $*" >&2; exit 1; }
 
 [[ -n "${TEAM_ID:-}" ]] || die "TEAM_ID is not set (App Store Connect → Membership details)."
 [[ -n "${MAS_PROFILE:-}" ]] || die "MAS_PROFILE is not set (path to the .provisionprofile)."
@@ -58,7 +63,8 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
 # VITE_MAS=1 strips the update badge and the external download CTA.
 # App Review rejects builds that route users around the store (2.4.5).
 VITE_MAS=1 env -u APPLE_SIGNING_IDENTITY -u APPLE_CERTIFICATE \
-  npm run tauri build -- --bundles app --target "$TARGET"
+  npm run tauri build -- --bundles app --target "$TARGET" \
+    --config "{\"version\":\"$VERSION\"}"
 
 [[ -d "$APP" ]] || die "expected bundle not found at $APP"
 
