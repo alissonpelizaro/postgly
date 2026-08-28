@@ -49,6 +49,13 @@ function isNewer(latest: string, current: string): boolean {
 }
 
 /**
+ * Mac App Store builds must never advertise an update or link to an
+ * external download — App Review rejects apps that route users around the
+ * store (guideline 2.4.5). Set at build time by `scripts/build-mas.sh`.
+ */
+const MAS_BUILD = import.meta.env.VITE_MAS === "1";
+
+/**
  * Reads the current app version from the backend and asks GitHub for the
  * latest release. Network failures are swallowed silently — a missing
  * update check should never block the UI.
@@ -70,6 +77,13 @@ export function useVersionCheck(): VersionInfo {
       }
 
       if (cancelled) return;
+
+      // Report the installed version, but never check for a newer one.
+      if (MAS_BUILD) {
+        setState({ ...initialState, current, loading: false });
+        return;
+      }
+
       setState((s) => ({ ...s, current, loading: true }));
 
       try {
