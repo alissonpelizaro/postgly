@@ -1,14 +1,22 @@
 name: Release
 
 # Push a version tag (e.g. `v0.1.0`) to build installers for every OS
-# and attach them to a GitHub Release.
+# and attach them to a GitHub Release. The same tag also builds the Mac
+# App Store package and hands it to App Store Connect — see the
+# `mac-app-store` job at the bottom.
 on:
   push:
     tags:
       - "v*"
+  # A manual run does the App Store package only — the public installers
+  # belong to a tag.
+  workflow_dispatch:
 
 jobs:
   release:
+    # Only a tag push builds the public installers; a manual run is for
+    # re-sending the App Store package on its own.
+    if: github.event_name == 'push'
     permissions:
       contents: write
     strategy:
@@ -93,7 +101,7 @@ jobs:
     # Run even if a build leg fails (e.g. a flaky upload). The map is
     # idempotent and only renames assets that actually made it onto the
     # release, so a partial upload still gets clean filenames.
-    if: ${{ always() }}
+    if: ${{ always() && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -136,3 +144,164 @@ jobs:
               gh release delete-asset "$TAG" "$orig" -R "$REPO" --yes || true
             done
           fi
+
+  # Builds the sandboxed App Store package, has Apple validate it, and only
+  # then hands it to App Store Connect. Uploading does NOT submit anything
+  # for review — the build simply becomes selectable on the version page,
+  # and "Add for Review" stays a deliberate click in the web UI.
+  #
+  # Skipped with a notice when the signing secrets are absent, so a tag push
+  # on a fork or a fresh clone doesn't fail the release.
+  #
+  # Required repository secrets:
+  #   MAS_CERTS_P12          base64 of a .p12 holding BOTH the Apple
+  #                          Distribution and Mac Installer Distribution
+  #                          identities (export them together from Keychain
+  #                          Access):  base64 -i certs.p12 | pbcopy
+  #   MAS_CERTS_PASSWORD     the password set during that export
+  #   MAS_PROVISION_PROFILE  base64 of the Mac App Store .provisionprofile
+  #   APPLE_TEAM_ID          e.g. YNC2G8QG4D
+  #   ASC_KEY_ID             App Store Connect API key id
+  #   ASC_ISSUER_ID          App Store Connect API issuer id
+  #   ASC_PRIVATE_KEY        contents of the AuthKey_<id>.p8 file
+  mac-app-store:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Everything below is conditioned on this, so an unconfigured repo
+      # reports "skipped" instead of a wall of signing errors.
+      - name: Check signing secrets
+        id: guard
+        env:
+          CERTS: ${{ secrets.MAS_CERTS_P12 }}
+          PROFILE: ${{ secrets.MAS_PROVISION_PROFILE }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          if [ -n "$CERTS" ] && [ -n "$PROFILE" ] && [ -n "$TEAM" ] && [ -n "$ASC_KEY" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Mac App Store secrets not configured — skipping."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.guard.outputs.ready == 'true'
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.guard.outputs.ready == 'true'
+        with:
+          workspaces: src-tauri
+          key: mas
+
+      - run: npm ci
+        if: steps.guard.outputs.ready == 'true'
+
+      # A throwaway keychain keeps the runner's default one untouched and
+      # lets the cleanup step delete every trace of the certificates.
+      - name: Import signing certificates
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          CERTS_P12: ${{ secrets.MAS_CERTS_P12 }}
+          CERTS_PASSWORD: ${{ secrets.MAS_CERTS_PASSWORD }}
+          PROFILE_B64: ${{ secrets.MAS_PROVISION_PROFILE }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/mas.keychain-db"
+          KEYCHAIN_PW="$(uuidgen)"
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+
+          echo "$CERTS_P12" | base64 --decode > "$RUNNER_TEMP/certs.p12"
+          # No -t filter: the .p12 carries the private keys as well as the
+          # certificates, and importing only the certs leaves identities
+          # that `find-identity -v` will not list.
+          security import "$RUNNER_TEMP/certs.p12" -k "$KEYCHAIN" \
+            -P "$CERTS_PASSWORD" -f pkcs12 \
+            -T /usr/bin/codesign -T /usr/bin/productbuild
+          rm -f "$RUNNER_TEMP/certs.p12"
+
+          # Without this, codesign blocks on a UI prompt that never comes.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PW" "$KEYCHAIN" >/dev/null
+
+          # Put it on the search list so `security find-identity` sees it.
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$KEYCHAIN"
+
+          echo "$PROFILE_B64" | base64 --decode > "$RUNNER_TEMP/mas.provisionprofile"
+
+          security find-identity -v | grep -E "Apple Distribution|3rd Party Mac Developer Installer"
+
+      - name: Build the App Store package
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          # A manual run has no tag, so fall back to the committed version.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          VERSION="$VERSION" MAS_PROFILE="$RUNNER_TEMP/mas.provisionprofile" \
+            ./scripts/build-mas.sh
+
+      # Apple's own validation. A package that fails here would be rejected
+      # at upload anyway, and failing on this step says why.
+      - name: Validate with App Store Connect
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/private_keys
+          echo "$ASC_PRIVATE_KEY" > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          xcrun altool --validate-app \
+            -f "src-tauri/target/mas/Postgly-${VERSION}.pkg" \
+            -t macos --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Upload to App Store Connect
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          xcrun altool --upload-app \
+            -f "src-tauri/target/mas/Postgly-${VERSION}.pkg" \
+            -t macos --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          echo "::notice::Build $VERSION uploaded. It appears on the version page after ~15 min of processing; submitting for review is still a manual step."
+
+      # Kept for debugging a rejected build. Deliberately not a release
+      # asset: the package is signed for the store and cannot be installed
+      # directly, so it would only confuse anyone who downloaded it.
+      - name: Keep the package as a workflow artifact
+        if: steps.guard.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-app-store-pkg
+          path: src-tauri/target/mas/*.pkg
+          retention-days: 14
+
+      - name: Remove the keychain and API key
+        if: ${{ always() && steps.guard.outputs.ready == 'true' }}
+        run: |
+          security delete-keychain "$KEYCHAIN" || true
+          rm -rf ~/private_keys "$RUNNER_TEMP/mas.provisionprofile"
