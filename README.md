@@ -13,8 +13,7 @@ _local-first client with a built-in AI agent_
 </div>
 
 ---
-
-## 🧠 Manage your database by talking to it
+## Postgly - 🧠 Manage your database by talking to it
 
 <img src="docs/img/agent_elicitation.png" alt="Postgly agent chat with human-in-the-loop approval" />
 
